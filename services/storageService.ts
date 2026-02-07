@@ -1,5 +1,6 @@
 
 import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS } from '../types';
+// @ts-ignore
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, setDoc, where, getDocs, deleteDoc, getDoc } from 'firebase/firestore';
 
@@ -152,13 +153,22 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
   if (!db) return { success: false, message: "No internet connection" };
 
   try {
-    // Check if user exists globally
-    const q = query(collection(db, "users"), where("rollNo", "==", user.rollNo));
+    // Sanitize input to prevent whitespace issues
+    const cleanRollNo = user.rollNo.trim();
+    const cleanUser = { 
+        ...user, 
+        rollNo: cleanRollNo,
+        name: user.name.trim(),
+        password: user.password.trim(),
+        status: user.status // Respect the passed status (pending or active)
+    };
+
+    // Check if user exists globally using cleanRollNo
+    const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) return { success: false, message: 'This Roll Number is already registered.' };
 
-    const newUser = { ...user, status: 'active' as UserStatus };
-    await setDoc(doc(db, "users", user.id), newUser);
+    await setDoc(doc(db, "users", cleanUser.id), cleanUser);
     return { success: true, message: 'Registration successful' };
   } catch (error: any) {
     console.error("Register Error:", error);
@@ -173,13 +183,27 @@ export const loginUser = async (rollNo: string, password: string): Promise<{ suc
   if (!db) return { success: false, message: "No internet connection" };
 
   try {
-    const q = query(collection(db, "users"), where("rollNo", "==", rollNo), where("password", "==", password));
+    const cleanRollNo = rollNo.trim();
+    const cleanPass = password.trim();
+
+    // 1. Find user by Roll No first
+    const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
     const snapshot = await getDocs(q);
     
-    if (snapshot.empty) return { success: false, message: 'Invalid credentials or user does not exist.' };
+    if (snapshot.empty) {
+        return { success: false, message: 'User not found. Please register first.' };
+    }
     
-    const user = snapshot.docs[0].data() as User;
+    // 2. Check password in memory
+    const userDoc = snapshot.docs.find(doc => doc.data().password === cleanPass);
+
+    if (!userDoc) {
+        return { success: false, message: 'Incorrect password.' };
+    }
+
+    const user = userDoc.data() as User;
     if (user.status === 'rejected') return { success: false, message: 'Account access denied by admin.' };
+    if (user.status === 'pending') return { success: false, message: 'Account pending approval by admin.' };
     
     return { success: true, user, message: 'Login successful' };
   } catch (error) {
@@ -197,7 +221,12 @@ export const updateUserProfile = async (userId: string, updates: { name?: string
   if (!db) return { success: false, message: "No internet connection" };
   
   try {
-      await updateDoc(doc(db, "users", userId), updates);
+      // Ensure we trim updates too
+      const cleanUpdates: any = {};
+      if (updates.name) cleanUpdates.name = updates.name.trim();
+      if (updates.password) cleanUpdates.password = updates.password.trim();
+
+      await updateDoc(doc(db, "users", userId), cleanUpdates);
       // Fetch fresh data
       const updatedUser = (await getDoc(doc(db, "users", userId))).data() as User;
       return { success: true, user: updatedUser, message: 'Profile updated globally' };
