@@ -1,8 +1,27 @@
-
 import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS } from '../types';
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, setDoc, where, getDocs, deleteDoc, getDoc } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  updateDoc, 
+  doc, 
+  setDoc, 
+  where, 
+  getDocs, 
+  deleteDoc, 
+  getDoc,
+  enableIndexedDbPersistence,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  arrayUnion,
+  arrayRemove,
+  runTransaction
+} from 'firebase/firestore';
 
 // --- CONFIGURATION ---
 // This configuration connects to your Global Database (Firestore)
@@ -20,19 +39,47 @@ const CLOUDINARY_CLOUD_NAME: string = "djvb10ozq";
 const CLOUDINARY_UPLOAD_PRESET: string = "lecturepool_unsigned"; 
 
 // Initialize Firebase
-// We wrap this in a check to ensure we don't crash, but for global sync, this MUST succeed.
 let db: any;
+let isOfflineMode = false;
+
 try {
   const app = initializeApp(FIREBASE_CONFIG);
-  db = getFirestore(app);
-  console.log("🔥 Connected to Global Database");
-} catch (error) {
-  console.error("CRITICAL ERROR: Could not connect to Global Database", error);
-  alert("Could not connect to the global server. Please check your internet connection.");
+  
+  // Initialize Firestore with persistence settings for robustness
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+
+  console.log("🔥 Connected to Global Database with Persistence");
+} catch (error: any) {
+  if (error.code === 'failed-precondition') {
+      // Multiple tabs open, persistence can only be enabled in one tab at a a time.
+      // Fallback to standard init
+      const app = initializeApp(FIREBASE_CONFIG);
+      db = getFirestore(app);
+      console.warn("Persistence failed (Multiple tabs open), falling back to standard.");
+  } else if (error.code === 'unimplemented') {
+      // The current browser does not support all of the features required to enable persistence
+      const app = initializeApp(FIREBASE_CONFIG);
+      db = getFirestore(app);
+      console.warn("Persistence not supported, falling back to standard.");
+  } else {
+    console.error("CRITICAL ERROR: Could not connect to Global Database", error);
+    isOfflineMode = true;
+  }
 }
+
+// --- HELPER: Network Check ---
+const isOnline = () => navigator.onLine;
 
 // --- HELPER: Cloudinary Upload ---
 const uploadToCloudinary = async (base64Data: string): Promise<string> => {
+  if (!isOnline()) {
+    throw new Error("Internet connection required for image upload.");
+  }
+
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
       throw new Error("Missing Cloudinary Configuration.");
   }
@@ -71,8 +118,10 @@ export const subscribeToSubjects = (callback: (subjects: string[]) => void): () 
     if (docSnapshot.exists()) {
       callback(docSnapshot.data().list || DEFAULT_SUBJECTS);
     } else {
-      // If global list doesn't exist, create it
-      setDoc(docSnapshot.ref, { list: DEFAULT_SUBJECTS });
+      // If global list doesn't exist, create it (only if online to avoid sync issues)
+      if (isOnline()) {
+         setDoc(docSnapshot.ref, { list: DEFAULT_SUBJECTS }).catch(e => console.error("Auto-create subjects failed", e));
+      }
       callback(DEFAULT_SUBJECTS);
     }
   }, (error) => {
@@ -86,19 +135,22 @@ export const addSubject = async (subject: string): Promise<{ success: boolean, m
 
   try {
     const docRef = doc(db, "config", "subjects");
-    const docSnap = await getDoc(docRef);
-    const currentSubjects = docSnap.exists() ? docSnap.data()?.list : DEFAULT_SUBJECTS;
-
-    if (currentSubjects.map((s:string) => s.toLowerCase()).includes(subject.toLowerCase())) {
-        return { success: false, message: 'Subject already exists' };
-    }
-    
-    const newSubjects = [...currentSubjects, subject].sort();
-    await setDoc(docRef, { list: newSubjects });
+    // Use arrayUnion to atomically add the subject. 
+    // This ensures no overwrites if multiple admins add subjects simultaneously.
+    await updateDoc(docRef, {
+      list: arrayUnion(subject)
+    });
     return { success: true, message: 'Subject added globally' };
-  } catch (e) {
-    console.error(e);
-    return { success: false, message: 'Failed to add subject' };
+  } catch (e: any) {
+    // If document doesn't exist yet, updateDoc fails. We try setDoc.
+    try {
+        const docRef = doc(db, "config", "subjects");
+        await setDoc(docRef, { list: [subject] }, { merge: true });
+        return { success: true, message: 'Subject added globally' };
+    } catch (innerErr) {
+        console.error(e);
+        return { success: false, message: 'Failed to add subject. Check connection.' };
+    }
   }
 };
 
@@ -107,29 +159,40 @@ export const updateSubject = async (oldName: string, newName: string): Promise<{
 
   try {
     const docRef = doc(db, "config", "subjects");
-    const docSnap = await getDoc(docRef);
-    const currentSubjects = docSnap.exists() ? docSnap.data()?.list : DEFAULT_SUBJECTS;
-
-    const index = currentSubjects.indexOf(oldName);
-    if (index === -1) return { success: false, message: 'Subject not found' };
     
-    currentSubjects[index] = newName;
-    currentSubjects.sort();
+    // Use a transaction to safely rename.
+    // This ensures we read the LATEST version of the list before modifying it.
+    await runTransaction(db, async (transaction) => {
+      const sfDoc = await transaction.get(docRef);
+      if (!sfDoc.exists()) {
+        throw "Document does not exist!";
+      }
 
-    await setDoc(docRef, { list: currentSubjects });
+      const currentList = sfDoc.data().list || [];
+      const newList = currentList.map((s: string) => s === oldName ? newName : s).sort();
+      
+      transaction.update(docRef, { list: newList });
+    });
+
     return { success: true, message: 'Subject updated globally' };
   } catch (e) {
+    console.error(e);
     return { success: false, message: 'Update failed' };
   }
 };
 
 export const deleteSubject = async (subject: string): Promise<void> => {
   if (!db) return;
-  const docRef = doc(db, "config", "subjects");
-  const docSnap = await getDoc(docRef);
-  const currentSubjects = docSnap.exists() ? docSnap.data()?.list : DEFAULT_SUBJECTS;
-  const newSubjects = currentSubjects.filter((s: string) => s !== subject);
-  await setDoc(docRef, { list: newSubjects });
+  try {
+    const docRef = doc(db, "config", "subjects");
+    // Use arrayRemove to atomically remove the subject.
+    // This guarantees it is removed regardless of what other data is in the list.
+    await updateDoc(docRef, {
+      list: arrayRemove(subject)
+    });
+  } catch (e) {
+    console.error("Delete subject failed", e);
+  }
 };
 
 export const resetSubjects = async (): Promise<void> => {
@@ -149,8 +212,21 @@ export const subscribeToUsers = (callback: (users: User[]) => void): () => void 
   });
 };
 
+// Listen to specific user profile (Active Session Management)
+export const subscribeToUserProfile = (userId: string, callback: (user: User | null) => void): () => void => {
+  if (!db) return () => {};
+  return onSnapshot(doc(db, "users", userId), (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data() as User);
+    } else {
+      callback(null); // User deleted
+    }
+  });
+};
+
 export const registerUser = async (user: User): Promise<{ success: boolean; message: string }> => {
-  if (!db) return { success: false, message: "No internet connection" };
+  if (!db) return { success: false, message: "No database connection" };
+  if (!isOnline()) return { success: false, message: "Internet required for registration." };
 
   try {
     // Sanitize input to prevent whitespace issues
@@ -160,12 +236,14 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
         rollNo: cleanRollNo,
         name: user.name.trim(),
         password: user.password.trim(),
-        status: user.status // Respect the passed status (pending or active)
+        status: user.status 
     };
 
     // Check if user exists globally using cleanRollNo
     const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
-    const snapshot = await getDocs(q);
+    // Force fetch from server to avoid cache conflicts during registration
+    const snapshot = await getDocs(q); 
+    
     if (!snapshot.empty) return { success: false, message: 'This Roll Number is already registered.' };
 
     await setDoc(doc(db, "users", cleanUser.id), cleanUser);
@@ -175,12 +253,12 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
     if (error.code === 'permission-denied') {
         return { success: false, message: 'Database permissions denied. Please contact admin.' };
     }
-    return { success: false, message: 'Registration failed. Check internet.' };
+    return { success: false, message: 'Registration failed. Server might be unreachable.' };
   }
 };
 
 export const loginUser = async (rollNo: string, password: string): Promise<{ success: boolean; user?: User; message: string }> => {
-  if (!db) return { success: false, message: "No internet connection" };
+  if (!db) return { success: false, message: "No database connection" };
 
   try {
     const cleanRollNo = rollNo.trim();
@@ -190,7 +268,13 @@ export const loginUser = async (rollNo: string, password: string): Promise<{ suc
     const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
     const snapshot = await getDocs(q);
     
+    // Check if we got data from cache and it's empty, might be out of sync
+    const fromCache = snapshot.metadata.fromCache;
+    
     if (snapshot.empty) {
+        if (fromCache && !isOnline()) {
+             return { success: false, message: 'User not found locally. Connect to internet to sync.' };
+        }
         return { success: false, message: 'User not found. Please register first.' };
     }
     
@@ -218,16 +302,14 @@ export const updateUserStatus = async (userId: string, status: UserStatus): Prom
 };
 
 export const updateUserProfile = async (userId: string, updates: { name?: string; password?: string }): Promise<{ success: boolean; user?: User; message: string }> => {
-  if (!db) return { success: false, message: "No internet connection" };
+  if (!db) return { success: false, message: "No database connection" };
   
   try {
-      // Ensure we trim updates too
       const cleanUpdates: any = {};
       if (updates.name) cleanUpdates.name = updates.name.trim();
       if (updates.password) cleanUpdates.password = updates.password.trim();
 
       await updateDoc(doc(db, "users", userId), cleanUpdates);
-      // Fetch fresh data
       const updatedUser = (await getDoc(doc(db, "users", userId))).data() as User;
       return { success: true, user: updatedUser, message: 'Profile updated globally' };
   } catch (e) {
@@ -282,3 +364,6 @@ export const deleteLecture = async (id: string): Promise<void> => {
   if (!db) return;
   await deleteDoc(doc(db, "lectures", id));
 };
+
+// Export connection status helper
+export const checkConnection = isOnline;
