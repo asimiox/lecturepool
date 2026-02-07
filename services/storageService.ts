@@ -255,6 +255,71 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
   }
 };
 
+export const adminAddUser = async (userData: { name: string; rollNo: string; password: string }): Promise<{ success: boolean; message: string }> => {
+  if (!db) return { success: false, message: "No database connection" };
+  
+  try {
+      const cleanRollNo = userData.rollNo.trim();
+      
+      // Check duplicate
+      const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) return { success: false, message: 'Roll Number already registered.' };
+
+      const newUser: User = {
+          id: crypto.randomUUID(),
+          name: userData.name.trim(),
+          rollNo: cleanRollNo,
+          password: userData.password.trim(),
+          role: 'student',
+          status: 'active' // Admin added users are auto-active
+      };
+
+      await setDoc(doc(db, "users", newUser.id), newUser);
+      return { success: true, message: 'Student added successfully' };
+  } catch (e) {
+      console.error(e);
+      return { success: false, message: 'Failed to add student.' };
+  }
+};
+
+export const adminUpdateUser = async (userId: string, updates: { name: string; rollNo: string; password?: string }): Promise<{ success: boolean; message: string }> => {
+    if (!db) return { success: false, message: "No database connection" };
+
+    try {
+        const cleanRollNo = updates.rollNo.trim();
+        
+        // Check uniqueness if rollNo changed
+        const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
+        const snapshot = await getDocs(q);
+        // If we find a doc with this rollNo, and its ID is NOT the current userId, it's a duplicate
+        const duplicate = snapshot.docs.find(d => d.id !== userId);
+        
+        if (duplicate) {
+            return { success: false, message: 'Roll Number already taken by another student.' };
+        }
+
+        const dataToUpdate: any = {
+            name: updates.name.trim(),
+            rollNo: cleanRollNo
+        };
+        
+        if (updates.password && updates.password.trim()) {
+            dataToUpdate.password = updates.password.trim();
+        }
+
+        await updateDoc(doc(db, "users", userId), dataToUpdate);
+        return { success: true, message: 'Student updated successfully' };
+    } catch (e) {
+        return { success: false, message: 'Update failed.' };
+    }
+};
+
+export const deleteUser = async (userId: string): Promise<void> => {
+  if (!db) return;
+  await deleteDoc(doc(db, "users", userId));
+};
+
 export const loginUser = async (rollNo: string, password: string): Promise<{ success: boolean; user?: User; message: string }> => {
   if (!db) return { success: false, message: "No database connection" };
 
