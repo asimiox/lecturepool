@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Screen, User } from './types';
 import { Layout } from './components/Layout';
@@ -76,7 +75,6 @@ const App: React.FC = () => {
       onLogout={handleLogout}
       isDarkMode={isDarkMode}
       toggleTheme={toggleTheme}
-      isAdmin={currentUser?.role === 'admin'}
     >
       {renderScreen()}
     </Layout>
