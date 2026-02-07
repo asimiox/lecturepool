@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Lecture, User } from '../types';
 import { subscribeToLectures, updateLectureStatus, subscribeToUsers, updateUserStatus, subscribeToSubjects, addSubject, updateSubject, deleteSubject, resetSubjects } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
-import { RefreshCw, BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader } from 'lucide-react';
+import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader } from 'lucide-react';
 
 type AdminTab = 'queue' | 'all_lectures' | 'students' | 'subjects';
 

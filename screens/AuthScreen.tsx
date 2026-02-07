@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { loginUser, registerUser } from '../services/storageService';
 import { User, UserRole } from '../types';
-import { Lock, User as UserIcon, BookOpen, UserPlus, LogIn, Info } from 'lucide-react';
+import { BookOpen, UserPlus, LogIn } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface AuthScreenProps {
