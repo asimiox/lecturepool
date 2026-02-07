@@ -1,200 +1,255 @@
 
 import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS } from '../types';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, setDoc, where, getDocs, deleteDoc, getDoc } from 'firebase/firestore';
 
-const STORAGE_KEY_LECTURES = 'lecturelog_data_v2';
-const STORAGE_KEY_USERS = 'lecturelog_users_v2'; 
-const STORAGE_KEY_SUBJECTS = 'lecturelog_subjects_v1';
-
-// Seed Admin
-const SEED_ADMIN: User = {
-  id: 'admin-01',
-  name: 'Faculty Admin',
-  rollNo: 'admin', // Username for admin
-  password: 'admin123',
-  role: 'admin',
-  status: 'active'
+// --- CONFIGURATION ---
+// This configuration connects to your Global Database (Firestore)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCyPDjDAIEcO8RxuOtay-zOxGiFpCnTu5c",
+  authDomain: "lecture-70bcf.firebaseapp.com",
+  projectId: "lecture-70bcf",
+  storageBucket: "lecture-70bcf.firebasestorage.app",
+  messagingSenderId: "379831175780",
+  appId: "1:379831175780:web:70fb9e884e625e9c10ed71"
 };
 
-// --- Subject Services ---
+// --- CLOUDINARY CONFIGURATION (GLOBAL IMAGE HOSTING) ---
+const CLOUDINARY_CLOUD_NAME: string = "djvb10ozq"; 
+const CLOUDINARY_UPLOAD_PRESET: string = "lecturepool_unsigned"; 
 
-export const getSubjects = (): string[] => {
-  const stored = localStorage.getItem(STORAGE_KEY_SUBJECTS);
-  if (!stored) {
-    // Initialize with Defaults
-    localStorage.setItem(STORAGE_KEY_SUBJECTS, JSON.stringify(DEFAULT_SUBJECTS));
-    return [...DEFAULT_SUBJECTS]; // Return copy to prevent mutation
-  }
-  return JSON.parse(stored);
-};
+// Initialize Firebase
+// We wrap this in a check to ensure we don't crash, but for global sync, this MUST succeed.
+let db: any;
+try {
+  const app = initializeApp(FIREBASE_CONFIG);
+  db = getFirestore(app);
+  console.log("🔥 Connected to Global Database");
+} catch (error) {
+  console.error("CRITICAL ERROR: Could not connect to Global Database", error);
+  alert("Could not connect to the global server. Please check your internet connection.");
+}
 
-export const addSubject = (subject: string): { success: boolean, message: string } => {
-  const subjects = getSubjects();
-  if (subjects.map(s => s.toLowerCase()).includes(subject.toLowerCase())) {
-      return { success: false, message: 'Subject already exists' };
-  }
-  subjects.push(subject);
-  subjects.sort();
-  localStorage.setItem(STORAGE_KEY_SUBJECTS, JSON.stringify(subjects));
-  return { success: true, message: 'Subject added' };
-};
-
-export const updateSubject = (oldName: string, newName: string): { success: boolean, message: string } => {
-  const subjects = getSubjects();
-  const index = subjects.indexOf(oldName);
-  
-  if (index === -1) {
-    return { success: false, message: 'Subject not found' };
-  }
-  
-  // Check if new name exists (exclude current)
-  if (subjects.some((s, i) => i !== index && s.toLowerCase() === newName.toLowerCase())) {
-      return { success: false, message: 'Subject name already exists' };
+// --- HELPER: Cloudinary Upload ---
+const uploadToCloudinary = async (base64Data: string): Promise<string> => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      throw new Error("Missing Cloudinary Configuration.");
   }
 
-  subjects[index] = newName;
-  subjects.sort();
-  localStorage.setItem(STORAGE_KEY_SUBJECTS, JSON.stringify(subjects));
+  const formData = new FormData();
+  formData.append('file', base64Data);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  formData.append('folder', 'lecture_pool');
 
-  // Update existing lectures with the new subject name
-  const lectures = getLectures();
-  let changed = false;
-  const updatedLectures = lectures.map(l => {
-      if (l.subject === oldName) {
-          changed = true;
-          return { ...l, subject: newName };
-      }
-      return l;
-  });
-  if (changed) {
-      localStorage.setItem(STORAGE_KEY_LECTURES, JSON.stringify(updatedLectures));
-  }
-
-  return { success: true, message: 'Subject updated' };
-};
-
-export const deleteSubject = (subject: string): void => {
-  const subjects = getSubjects();
-  const newSubjects = subjects.filter(s => s !== subject);
-  localStorage.setItem(STORAGE_KEY_SUBJECTS, JSON.stringify(newSubjects));
-};
-
-export const resetSubjects = (): void => {
-  localStorage.setItem(STORAGE_KEY_SUBJECTS, JSON.stringify(DEFAULT_SUBJECTS));
-};
-
-// --- User Services ---
-
-export const getUsers = (): User[] => {
-  const stored = localStorage.getItem(STORAGE_KEY_USERS);
-  if (!stored) {
-    // Initialize with Admin
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify([SEED_ADMIN]));
-    return [SEED_ADMIN];
-  }
-  return JSON.parse(stored);
-};
-
-export const registerUser = (user: User): { success: boolean; message: string } => {
-  const users = getUsers();
-  if (users.some(u => u.rollNo === user.rollNo)) {
-    return { success: false, message: 'Roll Number/Username already exists' };
-  }
-  
-  // Force status to pending for new students
-  const newUser = { ...user, status: 'pending' as UserStatus };
-  
-  users.push(newUser);
-  localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-  return { success: true, message: 'Registration successful' };
-};
-
-export const loginUser = (rollNo: string, password: string): { success: boolean; user?: User; message: string } => {
-  const users = getUsers();
-  const user = users.find(u => u.rollNo === rollNo && u.password === password);
-  
-  if (user) {
-    if (user.role === 'student' && user.status === 'pending') {
-      return { success: false, message: 'Account awaiting admin approval.' };
-    }
-    if (user.status === 'rejected') {
-      return { success: false, message: 'Account access has been denied.' };
-    }
-    return { success: true, user, message: 'Login successful' };
-  }
-  return { success: false, message: 'Invalid credentials' };
-};
-
-export const updateUserStatus = (userId: string, status: UserStatus): void => {
-  const users = getUsers();
-  const updatedUsers = users.map(u => {
-    if (u.id === userId) {
-      return { ...u, status };
-    }
-    return u;
-  });
-  localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(updatedUsers));
-};
-
-export const updateUserProfile = (userId: string, updates: { name?: string; password?: string }): { success: boolean; user?: User; message: string } => {
-  const users = getUsers();
-  const index = users.findIndex(u => u.id === userId);
-  
-  if (index === -1) {
-    return { success: false, message: 'User not found' };
-  }
-
-  const updatedUser = { ...users[index], ...updates };
-  users[index] = updatedUser;
-  
-  localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-  
-  // Also need to update user name in existing lectures if name changed
-  if (updates.name) {
-      const lectures = getLectures();
-      const updatedLectures = lectures.map(l => {
-          if (l.studentId === userId) {
-              return { ...l, studentName: updates.name! };
-          }
-          return l;
-      });
-      localStorage.setItem(STORAGE_KEY_LECTURES, JSON.stringify(updatedLectures));
-  }
-
-  return { success: true, user: updatedUser, message: 'Profile updated successfully' };
-};
-
-// --- Lecture Services ---
-
-export const getLectures = (): Lecture[] => {
-  const stored = localStorage.getItem(STORAGE_KEY_LECTURES);
-  if (!stored) return [];
   try {
-    return JSON.parse(stored);
-  } catch (e) {
-    console.error("Failed to parse lectures", e);
-    return [];
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+          method: 'POST',
+          body: formData
+      });
+
+      if (!response.ok) {
+          const errData = await response.json();
+          console.error("Cloudinary Error:", errData);
+          throw new Error(`Global Upload Failed: ${errData.error?.message || 'Unknown error'}`);
+      }
+
+      const data = await response.json();
+      return data.secure_url; // Returns the permanent HTTP URL
+  } catch (error: any) {
+      throw new Error("Image upload failed. Please check your internet connection.");
   }
 };
 
-export const addLecture = (lecture: Lecture): void => {
-  const lectures = getLectures();
-  const newLectures = [lecture, ...lectures];
-  localStorage.setItem(STORAGE_KEY_LECTURES, JSON.stringify(newLectures));
-};
+// --- SUBJECT SERVICES ---
 
-export const updateLectureStatus = (id: string, status: LectureStatus, remark?: string): void => {
-  const lectures = getLectures();
-  const updated = lectures.map(l => {
-    if (l.id === id) {
-      return { ...l, status, adminRemark: remark || l.adminRemark };
+export const subscribeToSubjects = (callback: (subjects: string[]) => void): () => void => {
+  if (!db) return () => {};
+  
+  // Connect to the global 'config' collection
+  const unsub = onSnapshot(doc(db, "config", "subjects"), (docSnapshot) => {
+    if (docSnapshot.exists()) {
+      callback(docSnapshot.data().list || DEFAULT_SUBJECTS);
+    } else {
+      // If global list doesn't exist, create it
+      setDoc(docSnapshot.ref, { list: DEFAULT_SUBJECTS });
+      callback(DEFAULT_SUBJECTS);
     }
-    return l;
+  }, (error) => {
+    console.error("Error syncing subjects:", error);
   });
-  localStorage.setItem(STORAGE_KEY_LECTURES, JSON.stringify(updated));
+  return unsub;
 };
 
-export const deleteLecture = (id: string): void => {
-  const lectures = getLectures();
-  const updated = lectures.filter(l => l.id !== id);
-  localStorage.setItem(STORAGE_KEY_LECTURES, JSON.stringify(updated));
+export const addSubject = async (subject: string): Promise<{ success: boolean, message: string }> => {
+  if (!db) return { success: false, message: "Database disconnected" };
+
+  try {
+    const docRef = doc(db, "config", "subjects");
+    const docSnap = await getDoc(docRef);
+    const currentSubjects = docSnap.exists() ? docSnap.data()?.list : DEFAULT_SUBJECTS;
+
+    if (currentSubjects.map((s:string) => s.toLowerCase()).includes(subject.toLowerCase())) {
+        return { success: false, message: 'Subject already exists' };
+    }
+    
+    const newSubjects = [...currentSubjects, subject].sort();
+    await setDoc(docRef, { list: newSubjects });
+    return { success: true, message: 'Subject added globally' };
+  } catch (e) {
+    console.error(e);
+    return { success: false, message: 'Failed to add subject' };
+  }
+};
+
+export const updateSubject = async (oldName: string, newName: string): Promise<{ success: boolean, message: string }> => {
+  if (!db) return { success: false, message: "Database disconnected" };
+
+  try {
+    const docRef = doc(db, "config", "subjects");
+    const docSnap = await getDoc(docRef);
+    const currentSubjects = docSnap.exists() ? docSnap.data()?.list : DEFAULT_SUBJECTS;
+
+    const index = currentSubjects.indexOf(oldName);
+    if (index === -1) return { success: false, message: 'Subject not found' };
+    
+    currentSubjects[index] = newName;
+    currentSubjects.sort();
+
+    await setDoc(docRef, { list: currentSubjects });
+    return { success: true, message: 'Subject updated globally' };
+  } catch (e) {
+    return { success: false, message: 'Update failed' };
+  }
+};
+
+export const deleteSubject = async (subject: string): Promise<void> => {
+  if (!db) return;
+  const docRef = doc(db, "config", "subjects");
+  const docSnap = await getDoc(docRef);
+  const currentSubjects = docSnap.exists() ? docSnap.data()?.list : DEFAULT_SUBJECTS;
+  const newSubjects = currentSubjects.filter((s: string) => s !== subject);
+  await setDoc(docRef, { list: newSubjects });
+};
+
+export const resetSubjects = async (): Promise<void> => {
+  if (!db) return;
+  await setDoc(doc(db, "config", "subjects"), { list: DEFAULT_SUBJECTS });
+};
+
+// --- USER SERVICES (GLOBAL AUTH) ---
+
+export const subscribeToUsers = (callback: (users: User[]) => void): () => void => {
+  if (!db) return () => {};
+  const q = query(collection(db, "users"));
+  return onSnapshot(q, (snapshot) => {
+    const users: User[] = [];
+    snapshot.forEach(doc => users.push(doc.data() as User));
+    callback(users);
+  });
+};
+
+export const registerUser = async (user: User): Promise<{ success: boolean; message: string }> => {
+  if (!db) return { success: false, message: "No internet connection" };
+
+  try {
+    // Check if user exists globally
+    const q = query(collection(db, "users"), where("rollNo", "==", user.rollNo));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) return { success: false, message: 'This Roll Number is already registered.' };
+
+    const newUser = { ...user, status: 'active' as UserStatus };
+    await setDoc(doc(db, "users", user.id), newUser);
+    return { success: true, message: 'Registration successful' };
+  } catch (error: any) {
+    console.error("Register Error:", error);
+    if (error.code === 'permission-denied') {
+        return { success: false, message: 'Database permissions denied. Please contact admin.' };
+    }
+    return { success: false, message: 'Registration failed. Check internet.' };
+  }
+};
+
+export const loginUser = async (rollNo: string, password: string): Promise<{ success: boolean; user?: User; message: string }> => {
+  if (!db) return { success: false, message: "No internet connection" };
+
+  try {
+    const q = query(collection(db, "users"), where("rollNo", "==", rollNo), where("password", "==", password));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) return { success: false, message: 'Invalid credentials or user does not exist.' };
+    
+    const user = snapshot.docs[0].data() as User;
+    if (user.status === 'rejected') return { success: false, message: 'Account access denied by admin.' };
+    
+    return { success: true, user, message: 'Login successful' };
+  } catch (error) {
+    console.error("Login Error:", error);
+    return { success: false, message: 'Login failed. Please check internet connection.' };
+  }
+};
+
+export const updateUserStatus = async (userId: string, status: UserStatus): Promise<void> => {
+  if (!db) return;
+  await updateDoc(doc(db, "users", userId), { status });
+};
+
+export const updateUserProfile = async (userId: string, updates: { name?: string; password?: string }): Promise<{ success: boolean; user?: User; message: string }> => {
+  if (!db) return { success: false, message: "No internet connection" };
+  
+  try {
+      await updateDoc(doc(db, "users", userId), updates);
+      // Fetch fresh data
+      const updatedUser = (await getDoc(doc(db, "users", userId))).data() as User;
+      return { success: true, user: updatedUser, message: 'Profile updated globally' };
+  } catch (e) {
+      return { success: false, message: 'Update failed' };
+  }
+};
+
+// --- LECTURE SERVICES (GLOBAL SYNC) ---
+
+export const subscribeToLectures = (callback: (lectures: Lecture[]) => void): () => void => {
+  if (!db) return () => {};
+  
+  const q = query(collection(db, "lectures"), orderBy("timestamp", "desc"));
+  return onSnapshot(q, (snapshot) => {
+    const lectures: Lecture[] = [];
+    snapshot.forEach(doc => lectures.push(doc.data() as Lecture));
+    callback(lectures);
+  });
+};
+
+export const addLecture = async (lecture: Lecture): Promise<void> => {
+  if (!db) throw new Error("No database connection");
+
+  // 1. Upload Image to Cloudinary (Global Storage)
+  if (lecture.imageURL && lecture.imageURL.startsWith('data:')) {
+      try {
+          const secureUrl = await uploadToCloudinary(lecture.imageURL);
+          lecture.imageURL = secureUrl; 
+      } catch (error: any) {
+          console.error("Cloudinary Upload Failed:", error);
+          throw new Error(`Image upload failed: ${error.message}`);
+      }
+  }
+
+  // 2. Save Metadata to Firestore (Global Database)
+  try {
+      await setDoc(doc(db, "lectures", lecture.id), lecture);
+  } catch (error: any) {
+      if (error.code === 'permission-denied') {
+          throw new Error("You do not have permission to upload. Check Database Rules.");
+      }
+      throw error;
+  }
+};
+
+export const updateLectureStatus = async (id: string, status: LectureStatus, remark?: string): Promise<void> => {
+  if (!db) return;
+  await updateDoc(doc(db, "lectures", id), { status, adminRemark: remark || "" });
+};
+
+export const deleteLecture = async (id: string): Promise<void> => {
+  if (!db) return;
+  await deleteDoc(doc(db, "lectures", id));
 };
