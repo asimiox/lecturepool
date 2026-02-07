@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Screen, User } from '../types';
-import { BookOpen, LogOut, ShieldCheck, Moon, Sun, User as UserIcon, Settings } from 'lucide-react';
+import { BookOpen, LogOut, ShieldCheck, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface LayoutProps {
@@ -52,6 +52,20 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   // Easter Egg State
   const [logoClicks, setLogoClicks] = useState(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // If no user (and not on Auth screen logic handled in App), show minimal layout
   if (!currentUser) return <>{children}</>;
@@ -212,11 +226,27 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="flex items-center gap-2 mb-6 text-navy-500 dark:text-navy-400">
-           <UserIcon size={14} />
-           <span className="text-xs font-bold uppercase tracking-wider">
-             Logged in as: <span className="text-navy-800 dark:text-navy-200">{currentUser.name}</span> ({currentUser.role})
-           </span>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 text-navy-500 dark:text-navy-400">
+           <div className="flex items-center gap-2">
+              <UserIcon size={14} />
+              <span className="text-xs font-bold uppercase tracking-wider">
+                Logged in as: <span className="text-navy-800 dark:text-navy-200">{currentUser.name}</span> ({currentUser.role})
+              </span>
+           </div>
+           
+           <div className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider ${isOnline ? 'text-green-600 dark:text-green-400' : 'text-maroon-600 dark:text-maroon-400'}`}>
+              {isOnline ? (
+                <>
+                  <Wifi size={14} />
+                  <span>Cloud Connected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff size={14} />
+                  <span>Offline Mode (Sync Pending)</span>
+                </>
+              )}
+           </div>
         </div>
         {children}
       </main>
