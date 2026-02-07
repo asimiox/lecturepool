@@ -12,6 +12,7 @@ interface AuthScreenProps {
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [role, setRole] = useState<UserRole>('student');
+  const [isLoading, setIsLoading] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -27,85 +28,99 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
+    setIsLoading(true);
 
-    if (isLogin) {
-      // Login Logic
-      const res = loginUser(formData.rollNo, formData.password);
-      if (res.success && res.user) {
-        if (res.user.role !== role) {
-            setError(`Please switch to ${res.user.role} login tab.`);
-            return;
-        }
-        onLoginSuccess(res.user);
-      } else {
-        setError(res.message);
-      }
-    } else {
-      // Register Logic (Student Only)
-      if (!formData.name || !formData.rollNo || !formData.password) {
-        setError("All fields are required.");
-        return;
-      }
-      const newUser: User = {
-        id: crypto.randomUUID(),
-        name: formData.name,
-        rollNo: formData.rollNo,
-        password: formData.password,
-        role: 'student',
-        status: 'pending' // Default status
-      };
-      
-      const res = registerUser(newUser);
-      if (res.success) {
-        // Special Logic for Crush
-        const normalizedName = formData.name.toLowerCase().trim();
-        const isCrush = formData.rollNo === '56' && (
-            normalizedName === 'sadia' || 
-            normalizedName === 'sadia mirza' || 
-            normalizedName === 'sadia shariq'
-        );
+    try {
+      // Trim inputs before sending
+      const cleanRollNo = formData.rollNo.trim();
+      const cleanPassword = formData.password.trim();
+      const cleanName = formData.name.trim();
 
-        if (isCrush) {
-             setSuccessMsg("Welcome Sadia! 🌸 Your account is created. Creating a magical space for you...");
-             
-             // Trigger sweet confetti
-             const end = Date.now() + 3000;
-             const colors = ['#ff0000', '#ff69b4', '#ffffff', '#800000'];
-
-             (function frame() {
-                confetti({
-                    particleCount: 4,
-                    angle: 60,
-                    spread: 55,
-                    origin: { x: 0 },
-                    colors: colors
-                });
-                confetti({
-                    particleCount: 4,
-                    angle: 120,
-                    spread: 55,
-                    origin: { x: 1 },
-                    colors: colors
-                });
-
-                if (Date.now() < end) {
-                    requestAnimationFrame(frame);
-                }
-             }());
-
+      if (isLogin) {
+        // Login Logic
+        const res = await loginUser(cleanRollNo, cleanPassword);
+        if (res.success && res.user) {
+          if (res.user.role !== role) {
+              setError(`Please switch to ${res.user.role} login tab.`);
+              setIsLoading(false);
+              return;
+          }
+          onLoginSuccess(res.user);
         } else {
-             setSuccessMsg("Registration successful! Please wait for the Class Rep/Admin to approve your account before logging in.");
+          setError(res.message);
         }
-
-        setIsLogin(true);
-        setFormData({ name: '', rollNo: '', password: '' });
       } else {
-        setError(res.message);
+        // Register Logic (Student Only)
+        if (!cleanName || !cleanRollNo || !cleanPassword) {
+          setError("All fields are required.");
+          setIsLoading(false);
+          return;
+        }
+        const newUser: User = {
+          id: crypto.randomUUID(),
+          name: cleanName,
+          rollNo: cleanRollNo,
+          password: cleanPassword,
+          role: 'student',
+          status: 'pending' // Default to pending for approval
+        };
+        
+        const res = await registerUser(newUser);
+        if (res.success) {
+          // Special Logic for Crush
+          const normalizedName = cleanName.toLowerCase();
+          const isCrush = cleanRollNo === '56' && (
+              normalizedName === 'sadia' || 
+              normalizedName === 'sadia mirza' || 
+              normalizedName === 'sadia shariq'
+          );
+
+          if (isCrush) {
+               setSuccessMsg("Welcome Sadia! 🌸 Registration successful. Please ask admin to approve.");
+               
+               // Trigger sweet confetti
+               const end = Date.now() + 3000;
+               const colors = ['#ff0000', '#ff69b4', '#ffffff', '#800000'];
+
+               (function frame() {
+                  confetti({
+                      particleCount: 4,
+                      angle: 60,
+                      spread: 55,
+                      origin: { x: 0 },
+                      colors: colors
+                  });
+                  confetti({
+                      particleCount: 4,
+                      angle: 120,
+                      spread: 55,
+                      origin: { x: 1 },
+                      colors: colors
+                  });
+
+                  if (Date.now() < end) {
+                      requestAnimationFrame(frame);
+                  }
+               }());
+
+          } else {
+               setSuccessMsg("Registration successful! Account pending admin approval.");
+          }
+
+          setIsLogin(true);
+          setFormData({ name: '', rollNo: '', password: '' });
+        } else {
+          setError(res.message);
+        }
       }
+    } catch (err) {
+      setError("An unexpected error occurred.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -216,16 +231,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                     />
                 </div>
 
-                {/* Info Box for Signup */}
-                {!isLogin && (
-                  <div className="flex items-start gap-2 p-3 rounded-xl bg-navy-100 dark:bg-navy-900/50">
-                    <Info size={16} className="text-navy-600 dark:text-navy-300 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-navy-600 dark:text-navy-300">
-                      Your account will need to be approved by the admin after registration before you can log in.
-                    </p>
-                  </div>
-                )}
-
                 {error && (
                     <div className="p-3 rounded-xl bg-maroon-50 dark:bg-maroon-900/20 text-maroon-600 dark:text-maroon-300 text-xs font-bold text-center border border-maroon-100 dark:border-maroon-800">
                         {error}
@@ -240,10 +245,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
                 <button
                     type="submit"
-                    className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl shadow-neu-flat dark:shadow-none text-sm font-bold text-white bg-navy-600 hover:bg-navy-700 hover:shadow-neu-pressed active:scale-95 transition-all mt-4"
+                    disabled={isLoading}
+                    className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl shadow-neu-flat dark:shadow-none text-sm font-bold text-white bg-navy-600 hover:bg-navy-700 hover:shadow-neu-pressed active:scale-95 transition-all mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                    {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
-                    {isLogin ? 'Sign In' : 'Create Account'}
+                    {isLoading ? 'Processing...' : (
+                        <>
+                            {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
+                            {isLogin ? 'Sign In' : 'Create Account'}
+                        </>
+                    )}
                 </button>
             </form>
         </div>
