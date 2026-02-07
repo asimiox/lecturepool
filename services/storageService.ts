@@ -1,4 +1,4 @@
-import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS } from '../types';
+import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS, Attachment } from '../types';
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
 import { 
@@ -73,9 +73,9 @@ try {
 const isOnline = () => navigator.onLine;
 
 // --- HELPER: Cloudinary Upload ---
-const uploadToCloudinary = async (base64Data: string): Promise<string> => {
+const uploadToCloudinary = async (base64Data: string, fileName: string): Promise<string> => {
   if (!isOnline()) {
-    throw new Error("Internet connection required for image upload.");
+    throw new Error("Internet connection required for upload.");
   }
 
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
@@ -86,9 +86,13 @@ const uploadToCloudinary = async (base64Data: string): Promise<string> => {
   formData.append('file', base64Data);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
   formData.append('folder', 'lecture_pool');
+  // Using 'auto' allows Cloudinary to detect if it's an image, pdf, or raw file
+  formData.append('resource_type', 'auto'); 
+  if(fileName) formData.append('public_id', fileName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + "_" + Date.now());
 
   try {
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+      // Use 'auto' endpoint to support non-image files
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
           method: 'POST',
           body: formData
       });
@@ -102,7 +106,7 @@ const uploadToCloudinary = async (base64Data: string): Promise<string> => {
       const data = await response.json();
       return data.secure_url; // Returns the permanent HTTP URL
   } catch (error: any) {
-      throw new Error("Image upload failed. Please check your internet connection.");
+      throw new Error("File upload failed. Please check your internet connection.");
   }
 };
 
@@ -410,28 +414,71 @@ export const subscribeToLectures = (callback: (lectures: Lecture[]) => void): ()
   const q = query(collection(db, "lectures"), orderBy("timestamp", "desc"));
   return onSnapshot(q, (snapshot) => {
     const lectures: Lecture[] = [];
-    snapshot.forEach(doc => lectures.push(doc.data() as Lecture));
+    snapshot.forEach(doc => {
+        const data = doc.data() as Lecture;
+        // Fix for backward compatibility with old single-image lectures
+        if (!data.attachments && data.imageURL) {
+            data.attachments = [{
+                id: 'legacy_img',
+                url: data.imageURL,
+                type: 'image',
+                name: 'Lecture Image',
+                mimeType: 'image/jpeg'
+            }];
+        } else if (!data.attachments) {
+            data.attachments = [];
+        }
+        lectures.push(data);
+    });
     callback(lectures);
   });
 };
 
-export const addLecture = async (lecture: Lecture): Promise<void> => {
+export const addLecture = async (lectureData: Partial<Lecture> & { rawFiles?: { data: string, name: string, type: string }[] }): Promise<void> => {
   if (!db) throw new Error("No database connection");
 
-  // 1. Upload Image to Cloudinary (Global Storage)
-  if (lecture.imageURL && lecture.imageURL.startsWith('data:')) {
-      try {
-          const secureUrl = await uploadToCloudinary(lecture.imageURL);
-          lecture.imageURL = secureUrl; 
-      } catch (error: any) {
-          console.error("Cloudinary Upload Failed:", error);
-          throw new Error(`Image upload failed: ${error.message}`);
+  // 1. Upload Files to Cloudinary (Global Storage)
+  const uploadedAttachments: Attachment[] = [];
+  
+  if (lectureData.rawFiles && lectureData.rawFiles.length > 0) {
+      // Upload sequentially to avoid overwhelming browser/connection
+      for (const file of lectureData.rawFiles) {
+          try {
+              const secureUrl = await uploadToCloudinary(file.data, file.name);
+              uploadedAttachments.push({
+                  id: crypto.randomUUID(),
+                  url: secureUrl,
+                  name: file.name,
+                  type: file.type.startsWith('image/') ? 'image' : 'file',
+                  mimeType: file.type
+              });
+          } catch (error: any) {
+              console.error("Cloudinary Upload Failed:", error);
+              throw new Error(`File upload failed for ${file.name}: ${error.message}`);
+          }
       }
   }
 
-  // 2. Save Metadata to Firestore (Global Database)
+  // 2. Prepare Metadata
+  const newLecture: Lecture = {
+      id: lectureData.id || crypto.randomUUID(),
+      studentId: lectureData.studentId!,
+      studentName: lectureData.studentName!,
+      rollNo: lectureData.rollNo!,
+      subject: lectureData.subject!,
+      topic: lectureData.topic!,
+      description: lectureData.description || '',
+      date: lectureData.date!,
+      timestamp: lectureData.timestamp!,
+      status: lectureData.status!,
+      adminRemark: '',
+      attachments: uploadedAttachments,
+      imageURL: uploadedAttachments.find(a => a.type === 'image')?.url || '' // Set first image as cover for legacy
+  };
+
+  // 3. Save to Firestore
   try {
-      await setDoc(doc(db, "lectures", lecture.id), lecture);
+      await setDoc(doc(db, "lectures", newLecture.id), newLecture);
   } catch (error: any) {
       if (error.code === 'permission-denied') {
           throw new Error("You do not have permission to upload. Check Database Rules.");
