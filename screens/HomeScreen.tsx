@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Screen, User, Lecture } from '../types';
-import { getLectures } from '../services/storageService';
-import { UploadCloud, Library, Clock, Calendar } from 'lucide-react';
+import { subscribeToLectures } from '../services/storageService';
+import { UploadCloud, Clock, Calendar } from 'lucide-react';
 import { LectureCard } from '../components/LectureCard';
 
 interface HomeScreenProps {
@@ -15,11 +15,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
   const [greeting, setGreeting] = useState('Hello');
 
   useEffect(() => {
-    // Get lectures for today
-    const all = getLectures();
-    const today = new Date().toISOString().split('T')[0];
-    const todayLecs = all.filter(l => l.date === today && l.status === 'approved');
-    setTodaysLectures(todayLecs);
+    // Real-time subscription
+    const unsubscribe = subscribeToLectures((allLectures) => {
+        const today = new Date().toISOString().split('T')[0];
+        const todayLecs = allLectures.filter(l => l.date === today && l.status === 'approved');
+        setTodaysLectures(todayLecs);
+    });
 
     // Set Greeting based on time
     const hour = new Date().getHours();
@@ -27,9 +28,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
     else if (hour < 18) setGreeting('Good Afternoon');
     else setGreeting('Good Evening');
 
+    return () => unsubscribe();
   }, []);
 
-  // Admin Dashboard Redirect usually handled in App.tsx, but if admin lands here, we show admin summary
+  // Admin Dashboard Redirect
   if (currentUser.role === 'admin') {
      return (
        <div className="text-center py-20">

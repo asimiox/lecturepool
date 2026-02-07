@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Screen, Lecture, LectureStatus, User } from '../types';
-import { addLecture, getSubjects } from '../services/storageService';
+import { addLecture, subscribeToSubjects } from '../services/storageService';
 import { Camera, Upload, AlertCircle } from 'lucide-react';
 
 interface UploadScreenProps {
@@ -24,12 +24,22 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const loadedSubjects = getSubjects();
-    setSubjects(loadedSubjects);
-    if (loadedSubjects.length > 0) {
-        setFormData(prev => ({ ...prev, subject: loadedSubjects[0] }));
-    }
-  }, []);
+    const unsub = subscribeToSubjects((list) => {
+        setSubjects(list);
+        
+        // Auto-select first subject if none selected
+        if (list.length > 0 && !formData.subject) {
+            setFormData(prev => ({ ...prev, subject: list[0] }));
+        }
+        
+        // CRITICAL: If the currently selected subject was just deleted by Admin (Globally),
+        // switch to the first available one to prevent uploading with a dead subject.
+        if (formData.subject && !list.includes(formData.subject) && list.length > 0) {
+             setFormData(prev => ({ ...prev, subject: list[0] }));
+        }
+    });
+    return () => unsub();
+  }, [formData.subject]); // Dependency ensures we check against current selection
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -38,8 +48,9 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        setError("File size too large. Please upload an image under 5MB.");
+      // 10MB Limit for Cloudinary Free Tier
+      if (file.size > 10 * 1024 * 1024) { 
+        setError("File size too large. Please upload an image under 10MB.");
         return;
       }
 
@@ -52,7 +63,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!imagePreview) {
       setError("Please upload an image of the lecture notes.");
@@ -69,7 +80,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
       const newLecture: Lecture = {
         id: crypto.randomUUID(),
         studentId: currentUser.id,
@@ -83,10 +94,14 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
         adminRemark: ''
       };
 
-      addLecture(newLecture);
+      await addLecture(newLecture);
       setIsSubmitting(false);
       onNavigate(Screen.MY_UPLOADS);
-    }, 1000);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to upload. Please try again.");
+      setIsSubmitting(false);
+    }
   };
 
   const inputClass = "w-full rounded-xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark border-transparent focus:border-navy-500 focus:ring-0 text-navy-900 dark:text-navy-100 placeholder-navy-300 p-4 text-sm font-medium transition-all duration-200 outline-none";
@@ -182,7 +197,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
                   <span className="text-sm font-bold text-navy-600 dark:text-navy-300">
                     Tap to upload notes
                   </span>
-                  <p className="text-xs text-navy-400 mt-2">Max 5MB</p>
+                  <p className="text-xs text-navy-400 mt-2">Max 10MB (Free Cloudinary Tier)</p>
                 </div>
               )}
               <input 

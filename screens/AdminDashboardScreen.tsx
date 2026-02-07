@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Lecture, User } from '../types';
-import { getLectures, updateLectureStatus, getUsers, updateUserStatus, getSubjects, addSubject, updateSubject, deleteSubject, resetSubjects } from '../services/storageService';
+import { subscribeToLectures, updateLectureStatus, subscribeToUsers, updateUserStatus, subscribeToSubjects, addSubject, updateSubject, deleteSubject, resetSubjects } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
-import { RefreshCw, BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw } from 'lucide-react';
+import { RefreshCw, BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader } from 'lucide-react';
 
 type AdminTab = 'queue' | 'all_lectures' | 'students' | 'subjects';
 
@@ -20,70 +20,66 @@ export const AdminDashboardScreen: React.FC = () => {
   const [editingSubject, setEditingSubject] = useState<string | null>(null);
   const [editSubjectName, setEditSubjectName] = useState('');
   const [subjectMsg, setSubjectMsg] = useState('');
+  const [isProcessingSubject, setIsProcessingSubject] = useState(false);
   
   // Search states
   const [studentSearch, setStudentSearch] = useState('');
   const [lectureSearch, setLectureSearch] = useState('');
 
-  const loadData = () => {
-    const allData = getLectures();
-    const allUsers = getUsers();
-    const allSubjects = getSubjects();
-    
-    setLectures(allData);
-    setSubjects(allSubjects);
-    
-    // Split users
-    const allStudents = allUsers.filter(u => u.role === 'student');
-    const activeStudents = allStudents.filter(u => u.status !== 'pending' && u.status !== 'rejected');
-    const pendingAccs = allStudents.filter(u => u.status === 'pending');
-    
-    setStudents(activeStudents);
-    setPendingUsers(pendingAccs);
-
-    const pending = allData
-      .filter(l => l.status === 'pending')
-      .sort((a, b) => a.timestamp - b.timestamp); // Oldest first for review
-    setPendingLectures(pending);
-  };
-
   useEffect(() => {
-    loadData();
+    // Real-time Subscriptions
+    const unsubLectures = subscribeToLectures((allData) => {
+        setLectures(allData);
+        setPendingLectures(allData.filter(l => l.status === 'pending').sort((a, b) => a.timestamp - a.timestamp));
+    });
+
+    const unsubUsers = subscribeToUsers((allUsers) => {
+        const allStudents = allUsers.filter(u => u.role === 'student');
+        setStudents(allStudents.filter(u => u.status !== 'pending' && u.status !== 'rejected'));
+        setPendingUsers(allStudents.filter(u => u.status === 'pending'));
+    });
+
+    const unsubSubjects = subscribeToSubjects((list) => {
+        setSubjects(list);
+    });
+
+    return () => {
+        unsubLectures();
+        unsubUsers();
+        unsubSubjects();
+    };
   }, []);
 
-  const handleApprove = (id: string) => {
-    updateLectureStatus(id, 'approved');
-    loadData(); // Refresh list
+  const handleApprove = async (id: string) => {
+    await updateLectureStatus(id, 'approved');
   };
 
-  const handleReject = (id: string, reason: string) => {
-    updateLectureStatus(id, 'rejected', reason);
-    loadData(); // Refresh list
+  const handleReject = async (id: string, reason: string) => {
+    await updateLectureStatus(id, 'rejected', reason);
   };
   
-  const handleUserApprove = (id: string) => {
-    updateUserStatus(id, 'active');
-    loadData();
+  const handleUserApprove = async (id: string) => {
+    await updateUserStatus(id, 'active');
   };
   
-  const handleUserReject = (id: string) => {
-    updateUserStatus(id, 'rejected');
-    loadData();
+  const handleUserReject = async (id: string) => {
+    await updateUserStatus(id, 'rejected');
   };
 
   // --- Subject Handlers ---
-  const handleAddSubject = (e: React.FormEvent) => {
+  const handleAddSubject = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newSubject.trim()) return;
+      setIsProcessingSubject(true);
       
-      const res = addSubject(newSubject.trim());
+      const res = await addSubject(newSubject.trim());
       if (res.success) {
           setNewSubject('');
-          loadData();
           setSubjectMsg('');
       } else {
           setSubjectMsg(res.message);
       }
+      setIsProcessingSubject(false);
   };
 
   const startEditSubject = (subject: string) => {
@@ -98,38 +94,39 @@ export const AdminDashboardScreen: React.FC = () => {
       setSubjectMsg('');
   };
 
-  const saveEditSubject = () => {
+  const saveEditSubject = async () => {
       if (!editSubjectName.trim() || !editingSubject) return;
+      setIsProcessingSubject(true);
       
-      const res = updateSubject(editingSubject, editSubjectName.trim());
+      const res = await updateSubject(editingSubject, editSubjectName.trim());
       if (res.success) {
           setEditingSubject(null);
-          loadData();
       } else {
           setSubjectMsg(res.message);
       }
+      setIsProcessingSubject(false);
   };
 
-  const handleDeleteSubject = (subject: string, e: React.MouseEvent) => {
+  const handleDeleteSubject = async (subject: string, e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      // Removed window.confirm as it can be problematic on some mobile contexts
-      // and we want immediate feedback for the user.
-      deleteSubject(subject);
-      loadData();
+      if (window.confirm(`Are you sure you want to delete "${subject}" globally?`)) {
+          setIsProcessingSubject(true);
+          await deleteSubject(subject);
+          setIsProcessingSubject(false);
+      }
   };
 
-  const handleResetSubjects = () => {
+  const handleResetSubjects = async () => {
       if (window.confirm("This will reset the subject list to the system defaults. Custom subjects will be removed. Continue?")) {
-          resetSubjects();
-          loadData();
+          setIsProcessingSubject(true);
+          await resetSubjects();
+          setIsProcessingSubject(false);
       }
   };
 
   // Stats calculation
   const totalUploads = lectures.length;
-  const approvedCount = lectures.filter(l => l.status === 'approved').length;
-  const approvalRate = totalUploads > 0 ? Math.round((approvedCount / totalUploads) * 100) : 0;
 
   // Filtered Lists
   const filteredStudents = students.filter(s => 
@@ -164,7 +161,7 @@ export const AdminDashboardScreen: React.FC = () => {
   return (
     <div className="space-y-10">
       
-      {/* Analytics Section - With Direct Link to Subjects */}
+      {/* Analytics Section */}
       <div>
         <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50 mb-6 flex items-center gap-2">
             <BarChart2 size={20} /> Dashboard Overview
@@ -172,7 +169,6 @@ export const AdminDashboardScreen: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatCard icon={CheckCircle} label="Total Uploads" value={totalUploads} colorClass="bg-navy-600" onClick={() => setActiveTab('all_lectures')} />
             <StatCard icon={Clock} label="Pending Review" value={pendingLectures.length} colorClass="bg-maroon-600" onClick={() => setActiveTab('queue')} />
-            {/* New Stat Card for Subjects acts as a big button */}
             <StatCard icon={Book} label="Active Subjects" value={subjects.length} colorClass="bg-indigo-600" onClick={() => setActiveTab('subjects')} />
             <StatCard icon={Users} label="Total Students" value={students.length} colorClass="bg-purple-600" onClick={() => setActiveTab('students')} />
         </div>
@@ -182,7 +178,7 @@ export const AdminDashboardScreen: React.FC = () => {
 
       {/* Control Panel */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
-        {/* Tabs - Wrapped for better mobile/desktop visibility */}
+        {/* Tabs */}
         <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark self-start w-full xl:w-auto">
              <button
                onClick={() => setActiveTab('queue')}
@@ -231,13 +227,6 @@ export const AdminDashboardScreen: React.FC = () => {
                <Book size={14} /> Subjects
              </button>
         </div>
-
-        <button 
-          onClick={loadData}
-          className="p-3 rounded-full bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:shadow-neu-pressed dark:hover:shadow-neu-pressed-dark text-navy-600 dark:text-navy-300 transition-all self-end xl:self-auto hidden xl:block"
-        >
-          <RefreshCw size={18} />
-        </button>
       </div>
 
       {/* Tab Content */}
@@ -303,7 +292,6 @@ export const AdminDashboardScreen: React.FC = () => {
                     key={lecture.id} 
                     lecture={lecture} 
                     isAdminView={true}
-                    // Admin can see actions for pending even in this view, effectively
                     showAdminActions={lecture.status === 'pending'}
                     onApprove={handleApprove}
                     onReject={handleReject}
@@ -316,11 +304,11 @@ export const AdminDashboardScreen: React.FC = () => {
 
         {activeTab === 'students' && (
           <>
-            {/* New User Requests Section */}
+            {/* New User Requests Section - KEPT for Legacy/Banning purposes even if auto-approve is on */}
             {pendingUsers.length > 0 && (
                 <div className="mb-10">
                     <h2 className="text-xl font-black text-maroon-600 dark:text-maroon-400 mb-6 flex items-center gap-2">
-                       <UserPlus size={20} /> New Account Requests
+                       <UserPlus size={20} /> Pending Reviews
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {pendingUsers.map(user => (
@@ -422,13 +410,19 @@ export const AdminDashboardScreen: React.FC = () => {
                             <h2 className="text-xl font-black text-navy-900 dark:text-navy-50">Manage Subjects</h2>
                             <button 
                                 onClick={handleResetSubjects}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-navy-200 dark:bg-navy-800 text-navy-700 dark:text-navy-300 hover:bg-navy-300 dark:hover:bg-navy-700 transition-colors"
+                                disabled={isProcessingSubject}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-navy-200 dark:bg-navy-800 text-navy-700 dark:text-navy-300 hover:bg-navy-300 dark:hover:bg-navy-700 transition-colors disabled:opacity-50"
                             >
                                 <RotateCcw size={12} /> Reset to Default
                             </button>
                          </div>
                          
-                         <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                         <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar relative">
+                             {isProcessingSubject && (
+                                 <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-20 flex items-center justify-center backdrop-blur-sm rounded-xl">
+                                     <Loader className="animate-spin text-navy-600 dark:text-navy-100" />
+                                 </div>
+                             )}
                              {subjects.map((subject) => {
                                  const count = lectures.filter(l => l.subject === subject).length;
                                  return (
@@ -441,9 +435,10 @@ export const AdminDashboardScreen: React.FC = () => {
                                                     onChange={(e) => setEditSubjectName(e.target.value)}
                                                     className="flex-1 bg-white dark:bg-navy-800 px-3 py-1.5 rounded-lg text-sm border border-navy-300 dark:border-navy-600 outline-none"
                                                     autoFocus
+                                                    disabled={isProcessingSubject}
                                                  />
-                                                 <button onClick={saveEditSubject} className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"><Save size={16} /></button>
-                                                 <button onClick={cancelEditSubject} className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"><X size={16} /></button>
+                                                 <button onClick={saveEditSubject} disabled={isProcessingSubject} className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"><Save size={16} /></button>
+                                                 <button onClick={cancelEditSubject} disabled={isProcessingSubject} className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"><X size={16} /></button>
                                              </div>
                                          ) : (
                                             <>
@@ -454,13 +449,13 @@ export const AdminDashboardScreen: React.FC = () => {
                                                         <span className="text-[10px] text-navy-400 dark:text-navy-500 font-medium">({count} lectures)</span>
                                                     </div>
                                                 </div>
-                                                {/* Action Buttons - Added z-10 and relative to ensure they catch clicks above the parent hover state */}
                                                 <div className="flex gap-2 relative z-10">
-                                                    <button onClick={() => startEditSubject(subject)} className="p-2 text-navy-500 hover:text-navy-800 dark:hover:text-navy-200 transition-colors cursor-pointer" title="Rename"><Edit2 size={16} className="pointer-events-none" /></button>
+                                                    <button onClick={() => startEditSubject(subject)} disabled={isProcessingSubject} className="p-2 text-navy-500 hover:text-navy-800 dark:hover:text-navy-200 transition-colors cursor-pointer disabled:opacity-50" title="Rename"><Edit2 size={16} className="pointer-events-none" /></button>
                                                     <button 
                                                         type="button"
                                                         onClick={(e) => handleDeleteSubject(subject, e)} 
-                                                        className="p-2 text-maroon-500 hover:text-maroon-700 transition-colors cursor-pointer" 
+                                                        disabled={isProcessingSubject}
+                                                        className="p-2 text-maroon-500 hover:text-maroon-700 transition-colors cursor-pointer disabled:opacity-50" 
                                                         title="Delete"
                                                     >
                                                         <Trash2 size={16} className="pointer-events-none" />
@@ -475,13 +470,15 @@ export const AdminDashboardScreen: React.FC = () => {
                     </div>
 
                     {/* Add New Subject */}
-                    <div className="h-fit p-6 rounded-3xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark sticky top-24">
+                    <div className="h-fit p-6 rounded-3xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark sticky top-24 relative">
+                         {isProcessingSubject && (
+                             <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-20 flex items-center justify-center backdrop-blur-sm rounded-3xl">
+                                <Loader className="animate-spin text-navy-600 dark:text-navy-100" />
+                             </div>
+                         )}
                          <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50 mb-4 flex items-center gap-2">
                              <Plus size={20} className="text-maroon-600" /> Add New Subject
                          </h3>
-                         <p className="text-xs text-navy-500 dark:text-navy-400 mb-6 leading-relaxed">
-                            Subjects added here will immediately appear in the dropdown menu for students when they upload new lectures.
-                         </p>
                          <form onSubmit={handleAddSubject}>
                              <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Subject Name</label>
                              <input 
@@ -490,16 +487,17 @@ export const AdminDashboardScreen: React.FC = () => {
                                 onChange={(e) => { setNewSubject(e.target.value); setSubjectMsg(''); }}
                                 className={inputClass}
                                 placeholder="e.g. Data Structures"
+                                disabled={isProcessingSubject}
                              />
                              {subjectMsg && (
                                  <p className={`text-xs mt-2 font-bold ${subjectMsg.includes('success') ? 'text-green-600' : 'text-maroon-600'}`}>{subjectMsg}</p>
                              )}
                              <button 
                                 type="submit"
-                                disabled={!newSubject.trim()}
-                                className="w-full mt-6 py-3 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 transition-all disabled:opacity-50"
+                                disabled={!newSubject.trim() || isProcessingSubject}
+                                className="w-full mt-6 py-3 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                              >
-                                 Add Subject
+                                 {isProcessingSubject ? 'Processing...' : 'Add Subject'}
                              </button>
                          </form>
                     </div>

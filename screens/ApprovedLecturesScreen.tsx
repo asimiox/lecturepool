@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Lecture } from '../types';
-import { getLectures, getSubjects } from '../services/storageService';
+import { subscribeToLectures, subscribeToSubjects } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
 import { Filter, Calendar, Search } from 'lucide-react';
 
@@ -13,15 +13,22 @@ export const ApprovedLecturesScreen: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    // Load subjects
-    setSubjects(getSubjects());
-    
-    // Only get APPROVED lectures
-    const allData = getLectures();
-    const approved = allData
-      .filter(l => l.status === 'approved')
-      .sort((a, b) => b.timestamp - a.timestamp);
-    setLectures(approved);
+    // Real-time listener
+    const unsubLectures = subscribeToLectures((allData) => {
+        const approved = allData
+            .filter(l => l.status === 'approved')
+            .sort((a, b) => b.timestamp - a.timestamp);
+        setLectures(approved);
+    });
+
+    const unsubSubjects = subscribeToSubjects((list) => {
+        setSubjects(list);
+    });
+
+    return () => {
+        unsubLectures();
+        unsubSubjects();
+    };
   }, []);
 
   const filteredLectures = lectures.filter(l => {

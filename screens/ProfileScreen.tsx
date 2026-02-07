@@ -18,6 +18,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ currentUser, onUse
   });
   
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setFormData({
@@ -32,7 +33,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ currentUser, onUse
     setMsg(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.name.trim()) {
@@ -50,16 +51,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ currentUser, onUse
       return;
     }
 
-    const result = updateUserProfile(currentUser.id, {
-      name: formData.name,
-      password: formData.password
-    });
+    setIsSubmitting(true);
+    try {
+      const result = await updateUserProfile(currentUser.id, {
+        name: formData.name,
+        password: formData.password
+      });
 
-    if (result.success && result.user) {
-      setMsg({ type: 'success', text: 'Profile updated successfully!' });
-      onUserUpdate(result.user);
-    } else {
-      setMsg({ type: 'error', text: result.message });
+      if (result.success && result.user) {
+        setMsg({ type: 'success', text: 'Profile updated successfully!' });
+        onUserUpdate(result.user);
+      } else {
+        setMsg({ type: 'error', text: result.message });
+      }
+    } catch (error) {
+       setMsg({ type: 'error', text: 'Update failed.' });
+    } finally {
+       setIsSubmitting(false);
     }
   };
 
@@ -167,9 +175,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ currentUser, onUse
              </button>
              <button
                 type="submit"
-                className="flex-[2] py-3 rounded-xl text-sm font-bold text-white bg-navy-600 shadow-neu-flat dark:shadow-none hover:bg-navy-700 active:shadow-neu-pressed transition-all flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                className="flex-[2] py-3 rounded-xl text-sm font-bold text-white bg-navy-600 shadow-neu-flat dark:shadow-none hover:bg-navy-700 active:shadow-neu-pressed transition-all flex items-center justify-center gap-2 disabled:opacity-70"
              >
-               <Save size={18} /> Save Changes
+               <Save size={18} /> {isSubmitting ? 'Saving...' : 'Save Changes'}
              </button>
           </div>
 

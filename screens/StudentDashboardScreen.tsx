@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Screen, Lecture, User } from '../types';
-import { getLectures, getSubjects } from '../services/storageService';
+import { subscribeToLectures, subscribeToSubjects } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
 import { CheckCircle, Clock, XCircle, Search, Filter, Calendar } from 'lucide-react';
 
@@ -20,17 +20,22 @@ export const StudentDashboardScreen: React.FC<StudentDashboardScreenProps> = ({ 
   const [dateFilter, setDateFilter] = useState('');
 
   useEffect(() => {
-    // Load data
-    const allData = getLectures();
-    const loadedSubjects = getSubjects();
-    setSubjects(loadedSubjects);
+    // Real-time listeners
+    const unsubLectures = subscribeToLectures((allData) => {
+        const userLectures = allData.filter(l => 
+            l.studentId === currentUser.id || l.rollNo === currentUser.rollNo
+        ).sort((a, b) => b.timestamp - a.timestamp);
+        setMyLectures(userLectures);
+    });
 
-    // Filter by studentID or Fallback to rollNo match
-    const userLectures = allData.filter(l => 
-        l.studentId === currentUser.id || l.rollNo === currentUser.rollNo
-    ).sort((a, b) => b.timestamp - a.timestamp);
-    
-    setMyLectures(userLectures);
+    const unsubSubjects = subscribeToSubjects((list) => {
+        setSubjects(list);
+    });
+
+    return () => {
+        unsubLectures();
+        unsubSubjects();
+    };
   }, [currentUser]);
 
   // Filtering Logic

@@ -108,11 +108,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                }());
 
           } else {
-               setSuccessMsg("Registration successful! Account pending admin approval.");
+               setSuccessMsg("Registration successful! Credentials pre-filled for login.");
           }
 
+          // Switch to Login and pre-fill data for easy sign-in
           setIsLogin(true);
-          setFormData({ name: '', rollNo: '', password: '' });
+          // Keep the credentials in the form so they don't have to type them again
+          setFormData(prev => ({ ...prev })); 
         } else {
           setError(res.message);
         }
