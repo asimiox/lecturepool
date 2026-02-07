@@ -8,6 +8,7 @@ import { ApprovedLecturesScreen } from './screens/ApprovedLecturesScreen';
 import { AdminDashboardScreen } from './screens/AdminDashboardScreen';
 import { AuthScreen } from './screens/AuthScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { subscribeToUserProfile } from './services/storageService';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -24,6 +25,38 @@ const App: React.FC = () => {
       document.body.style.backgroundColor = '#e6e9ef';
     }
   }, [isDarkMode]);
+
+  // Real-time Session Security Check
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Listen to the specific user document in the database
+    // This ensures if Admin clicks "Reject" on their dashboard, 
+    // this user is immediately logged out on their device.
+    const unsubscribe = subscribeToUserProfile(currentUser.id, (updatedUser) => {
+      if (!updatedUser) {
+        // User deleted from database
+        alert("Your account has been removed.");
+        handleLogout();
+      } else if (updatedUser.status === 'rejected') {
+        // User banned/rejected by admin
+        alert("Session Expired: Your account access has been revoked by the administrator.");
+        handleLogout();
+      } else if (updatedUser.status === 'pending' && currentUser.status === 'active') {
+         // Rare edge case: Moved back to pending
+         alert("Your account is under review.");
+         handleLogout();
+      } else {
+         // Sync other details (name change, etc) quietly
+         // Only update if something actually changed to avoid render loops
+         if (JSON.stringify(updatedUser) !== JSON.stringify(currentUser)) {
+             setCurrentUser(updatedUser);
+         }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.id]); // Only re-subscribe if ID changes (login)
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
