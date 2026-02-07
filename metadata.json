@@ -1,0 +1,5 @@
+{
+  "name": "LecturePool",
+  "description": "A structured, academic repository for class lecture notes with student upload and admin moderation capabilities.",
+  "requestFramePermissions": []
+}

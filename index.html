@@ -1,0 +1,119 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LecturePool - Academic Repository</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              navy: {
+                50: '#f0f2f9',
+                100: '#e0e5f2',
+                200: '#c0cce6',
+                300: '#90a8d3',
+                400: '#5c7fc0',
+                500: '#385dae',
+                600: '#2a4996',
+                700: '#233b7b',
+                800: '#1e3264',
+                900: '#000080', // Deep Navy
+                950: '#000045',
+              },
+              maroon: {
+                50: '#fdf2f2',
+                100: '#fde3e3',
+                200: '#fbd0d0',
+                300: '#f8a9a9',
+                400: '#f27676',
+                500: '#e84848',
+                600: '#d52828',
+                700: '#b21a1a',
+                800: '#921818',
+                900: '#800000', // Deep Maroon
+                950: '#450a0a',
+              },
+              // Neumorphic Backgrounds
+              neu: {
+                base: '#e6e9ef', // Light mode base
+                dark: '#1e212b', // Dark mode base
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+            },
+            boxShadow: {
+              'neu-flat': '6px 6px 12px #b8b9be, -6px -6px 12px #ffffff',
+              'neu-pressed': 'inset 6px 6px 12px #b8b9be, inset -6px -6px 12px #ffffff',
+              'neu-flat-dark': '6px 6px 12px #15171e, -6px -6px 12px #272b38',
+              'neu-pressed-dark': 'inset 6px 6px 12px #15171e, inset -6px -6px 12px #272b38',
+            },
+            animation: {
+              'gradient-x': 'gradient-x 3s ease infinite',
+              'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            },
+            keyframes: {
+              'gradient-x': {
+                '0%, 100%': {
+                  'background-size': '200% 200%',
+                  'background-position': 'left center'
+                },
+                '50%': {
+                  'background-size': '200% 200%',
+                  'background-position': 'right center'
+                },
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background-color: #e6e9ef; /* neu-base */
+        color: #000080; /* navy-900 */
+        transition: background-color 0.3s, color 0.3s;
+      }
+      .dark body {
+        background-color: #1e212b; /* neu-dark */
+        color: #f0f2f9; /* navy-50 */
+      }
+      /* Custom Scrollbar for sleek look */
+      ::-webkit-scrollbar {
+        width: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #90a8d3;
+        border-radius: 5px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #000080;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.2"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
