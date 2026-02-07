@@ -12,6 +12,14 @@ export interface User {
   status: UserStatus;
 }
 
+export interface Attachment {
+  id: string;
+  url: string;
+  name: string;
+  type: 'image' | 'file';
+  mimeType: string;
+}
+
 export interface Lecture {
   id: string;
   studentId: string; // Link to user
@@ -20,7 +28,8 @@ export interface Lecture {
   subject: string;
   topic: string;
   description?: string;
-  imageURL: string;
+  imageURL?: string; // Deprecated, kept for backward compatibility
+  attachments: Attachment[]; // New multi-file support
   date: string; // ISO Date String YYYY-MM-DD
   timestamp: number; // For sorting
   status: LectureStatus;
