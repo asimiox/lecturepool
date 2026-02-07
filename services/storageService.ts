@@ -73,7 +73,7 @@ try {
 const isOnline = () => navigator.onLine;
 
 // --- HELPER: Cloudinary Upload ---
-const uploadToCloudinary = async (base64Data: string, fileName: string): Promise<string> => {
+const uploadToCloudinary = async (base64Data: string, fileName: string, mimeType: string): Promise<string> => {
   if (!isOnline()) {
     throw new Error("Internet connection required for upload.");
   }
@@ -86,13 +86,32 @@ const uploadToCloudinary = async (base64Data: string, fileName: string): Promise
   formData.append('file', base64Data);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
   formData.append('folder', 'lecture_pool');
-  // Using 'auto' allows Cloudinary to detect if it's an image, pdf, or raw file
-  formData.append('resource_type', 'auto'); 
-  if(fileName) formData.append('public_id', fileName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + "_" + Date.now());
+  
+  // DETERMINE RESOURCE TYPE
+  // 'image' for images, 'raw' for everything else (PDFs, Docs).
+  // Using 'auto' or 'image' for PDFs can cause them to be processed/converted, leading to "contains errors" when viewing.
+  let resourceType = 'raw';
+  if (mimeType.startsWith('image/')) {
+      resourceType = 'image';
+  }
+
+  if (fileName) {
+      const safeName = fileName.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+      const uniqueName = `${safeName.substring(0, safeName.lastIndexOf('.'))}_${Date.now()}`;
+      
+      // For RAW files, we usually want to preserve the extension in the public_id ensures the URL ends with it.
+      // Cloudinary 'raw' doesn't auto-append extensions as reliably as 'image'.
+      if (resourceType === 'raw') {
+         const ext = fileName.split('.').pop();
+         formData.append('public_id', `${uniqueName}.${ext}`);
+      } else {
+         formData.append('public_id', uniqueName);
+      }
+  }
 
   try {
-      // Use 'auto' endpoint to support non-image files
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+      // Use specific resource type endpoint
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
           method: 'POST',
           body: formData
       });
@@ -444,7 +463,7 @@ export const addLecture = async (lectureData: Partial<Lecture> & { rawFiles?: { 
       // Upload sequentially to avoid overwhelming browser/connection
       for (const file of lectureData.rawFiles) {
           try {
-              const secureUrl = await uploadToCloudinary(file.data, file.name);
+              const secureUrl = await uploadToCloudinary(file.data, file.name, file.type);
               uploadedAttachments.push({
                   id: crypto.randomUUID(),
                   url: secureUrl,
