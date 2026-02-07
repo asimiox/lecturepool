@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
-import { Lecture } from '../types';
+import { Lecture, Attachment } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { Calendar, User, XCircle, Download, Maximize2 } from 'lucide-react';
+import { Calendar, User, XCircle, Download, Maximize2, FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 interface LectureCardProps {
   lecture: Lecture;
   isAdminView?: boolean;
   onApprove?: (id: string) => void;
   onReject?: (id: string, reason: string) => void;
+  onDelete?: (id: string) => void; // New prop for deleting approved lectures
   showAdminActions?: boolean;
 }
 
@@ -17,12 +18,19 @@ export const LectureCard: React.FC<LectureCardProps> = ({
   isAdminView = false, 
   onApprove, 
   onReject,
+  onDelete,
   showAdminActions = false
 }) => {
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [isImageExpanded, setIsImageExpanded] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  // Extract images and files separately
+  const images = lecture.attachments.filter(a => a.type === 'image');
+  const files = lecture.attachments.filter(a => a.type === 'file');
+  const coverImage = images.length > 0 ? images[0].url : null;
+  const moreImagesCount = images.length > 1 ? images.length - 1 : 0;
 
   const handleReject = () => {
     if (onReject && rejectReason.trim()) {
@@ -32,84 +40,65 @@ export const LectureCard: React.FC<LectureCardProps> = ({
     }
   };
 
-  const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isDownloading) return;
-
-    setIsDownloading(true);
-    try {
-      // Fetch the image as a blob to force download behavior even for cross-origin URLs
-      const response = await fetch(lecture.imageURL);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      // Sanitize filename
-      const safeSubject = lecture.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const safeTopic = lecture.topic.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      link.download = `${safeSubject}_${safeTopic}_${lecture.rollNo}.jpg`;
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      // Cleanup
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Download failed, falling back to open", error);
-      // Fallback: Just open it in a new tab if fetch fails (CORS etc)
-      window.open(lecture.imageURL, '_blank');
-    } finally {
-      setIsDownloading(false);
+  const handleDelete = () => {
+    if (onDelete && window.confirm("Are you sure you want to delete this lecture permanently?")) {
+        onDelete(lecture.id);
     }
   };
 
-  const handleView = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsImageExpanded(true);
+  const handleDownload = (url: string, name: string) => {
+      // Direct open in new tab for reliable downloading of various file types
+      window.open(url, '_blank');
   };
 
   return (
-    <div className="group h-full flex flex-col rounded-2xl p-4 transition-all duration-300 bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:transform hover:-translate-y-1">
+    <div className="group h-full flex flex-col rounded-2xl p-4 transition-all duration-300 bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:transform hover:-translate-y-1 relative">
       
-      {/* Image Section - Skeuomorphic Inset */}
-      <div 
-        className="relative h-48 rounded-xl overflow-hidden cursor-pointer shadow-neu-pressed dark:shadow-neu-pressed-dark p-1 bg-transparent"
-        onClick={() => setIsImageExpanded(true)}
-      >
-        <img 
-          src={lecture.imageURL} 
-          alt={lecture.topic} 
-          className="w-full h-full object-cover rounded-lg transition-transform duration-500 group-hover:scale-105"
-        />
-        <div className="absolute top-3 right-3 flex gap-2">
-           <StatusBadge status={lecture.status} />
-        </div>
-        
-        {/* View Button (Always visible on mobile, or bottom left) */}
-        <button
-           onClick={handleView}
-           className="absolute bottom-3 left-3 p-2 rounded-lg bg-navy-900/80 text-white backdrop-blur-sm hover:bg-navy-700 transition-colors shadow-sm flex items-center gap-1.5 text-xs font-bold"
-           title="View Fullscreen"
-        >
-           <Maximize2 size={14} /> View
-        </button>
+      {/* Admin Delete Button (Top Right absolute) - Visible for approved lectures if onDelete provided */}
+      {isAdminView && onDelete && !showAdminActions && (
+          <button 
+             onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+             className="absolute top-2 right-2 z-10 p-2 rounded-lg bg-maroon-100 text-maroon-600 hover:bg-maroon-600 hover:text-white transition-colors shadow-sm"
+             title="Delete Lecture"
+          >
+             <Trash2 size={16} />
+          </button>
+      )}
 
-        {/* Download Button (Only for approved or admin view) */}
-        {(lecture.status === 'approved' || isAdminView) && (
-          <div className="absolute bottom-3 right-3">
-             <button
-               onClick={handleDownload}
-               disabled={isDownloading}
-               className={`p-2 rounded-lg bg-navy-900/80 text-white backdrop-blur-sm hover:bg-maroon-600 transition-colors shadow-sm ${isDownloading ? 'opacity-70 cursor-wait' : ''}`}
-               title="Download Image"
-             >
-               <Download size={14} className={isDownloading ? 'animate-bounce' : ''} />
-             </button>
+      {/* Image Section - Skeuomorphic Inset */}
+      {coverImage ? (
+          <div 
+            className="relative h-48 rounded-xl overflow-hidden cursor-pointer shadow-neu-pressed dark:shadow-neu-pressed-dark p-1 bg-transparent"
+            onClick={() => { setActiveImageIndex(0); setIsImageExpanded(true); }}
+          >
+            <img 
+              src={coverImage} 
+              alt={lecture.topic} 
+              className="w-full h-full object-cover rounded-lg transition-transform duration-500 group-hover:scale-105"
+            />
+            
+            <div className="absolute top-3 left-3 flex gap-2">
+               <StatusBadge status={lecture.status} />
+            </div>
+
+            {moreImagesCount > 0 && (
+                <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-black/60 text-white text-xs font-bold backdrop-blur-sm">
+                    +{moreImagesCount} Photos
+                </div>
+            )}
+            
+            <div className="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-navy-900/60 text-white text-xs font-bold backdrop-blur-sm flex items-center gap-1">
+                 <Maximize2 size={10} /> View
+            </div>
           </div>
-        )}
-      </div>
+      ) : (
+          /* Placeholder for No Image (Only Docs) */
+          <div className="h-48 rounded-xl flex flex-col items-center justify-center bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark text-navy-400">
+               <FileText size={48} className="mb-2 opacity-50" />
+               <span className="text-xs font-bold uppercase tracking-wider">Documents Only</span>
+               <div className="mt-4"> <StatusBadge status={lecture.status} /> </div>
+          </div>
+      )}
 
       {/* Content Section */}
       <div className="pt-5 pb-2 px-2 flex-1 flex flex-col">
@@ -126,6 +115,24 @@ export const LectureCard: React.FC<LectureCardProps> = ({
           <p className="text-sm text-navy-600 dark:text-navy-300 line-clamp-2 mb-4 font-medium">
             {lecture.description}
           </p>
+        )}
+        
+        {/* Document Attachments List */}
+        {files.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
+                {files.map((file) => (
+                    <button
+                        key={file.id}
+                        onClick={(e) => { e.stopPropagation(); handleDownload(file.url, file.name); }}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-navy-100 dark:bg-navy-800 text-navy-700 dark:text-navy-200 text-xs font-bold hover:bg-navy-200 dark:hover:bg-navy-700 transition-colors"
+                        title={file.name}
+                    >
+                        <FileText size={12} />
+                        <span className="truncate max-w-[100px]">{file.name}</span>
+                        <Download size={12} className="opacity-50" />
+                    </button>
+                ))}
+            </div>
         )}
 
         <div className="mt-auto space-y-3">
@@ -154,7 +161,7 @@ export const LectureCard: React.FC<LectureCardProps> = ({
           </div>
         )}
 
-        {/* Admin Actions */}
+        {/* Admin Actions (Pending Queue) */}
         {showAdminActions && lecture.status === 'pending' && (
           <div className="mt-5 pt-4 border-t border-navy-100 dark:border-navy-800 flex gap-3">
              {!isRejecting ? (
@@ -204,31 +211,49 @@ export const LectureCard: React.FC<LectureCardProps> = ({
         )}
       </div>
 
-      {/* Image Modal */}
-      {isImageExpanded && (
+      {/* Image Gallery Modal */}
+      {isImageExpanded && images.length > 0 && (
         <div 
           className="fixed inset-0 z-[100] bg-navy-900/95 flex items-center justify-center p-4 backdrop-blur-md"
           onClick={() => setIsImageExpanded(false)}
         >
-          <img 
-            src={lecture.imageURL} 
-            alt={lecture.topic} 
-            className="max-w-full max-h-screen rounded-2xl shadow-2xl border-4 border-navy-800"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button className="absolute top-6 right-6 text-white hover:text-maroon-400 transition-colors">
-            <XCircle size={40} />
-          </button>
-          
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4">
-             <button 
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className="px-6 py-2 rounded-xl bg-maroon-600 text-white font-bold shadow-lg hover:bg-maroon-500 transition-colors flex items-center gap-2"
-             >
-                <Download size={18} className={isDownloading ? 'animate-bounce' : ''} /> 
-                {isDownloading ? 'Downloading...' : 'Download'}
-             </button>
+          <div className="relative max-w-4xl w-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+              <img 
+                src={images[activeImageIndex].url} 
+                alt={lecture.topic} 
+                className="max-h-[80vh] max-w-full rounded-xl shadow-2xl border-2 border-navy-800"
+              />
+              
+              {/* Navigation for multiple images */}
+              {images.length > 1 && (
+                  <div className="flex gap-2 mt-4 overflow-x-auto p-2 w-full justify-center">
+                      {images.map((img, idx) => (
+                          <button
+                            key={img.id}
+                            onClick={() => setActiveImageIndex(idx)}
+                            className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === activeImageIndex ? 'border-maroon-500 scale-110' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                          >
+                              <img src={img.url} className="w-full h-full object-cover" alt="thumb" />
+                          </button>
+                      ))}
+                  </div>
+              )}
+              
+              <div className="mt-6 flex gap-4">
+                  <button 
+                      onClick={() => handleDownload(images[activeImageIndex].url, images[activeImageIndex].name)}
+                      className="px-6 py-2 rounded-xl bg-maroon-600 text-white font-bold shadow-lg hover:bg-maroon-500 transition-colors flex items-center gap-2"
+                  >
+                      <Download size={18} /> Download This Image
+                  </button>
+              </div>
+
+              <button 
+                className="absolute -top-10 right-0 text-white hover:text-maroon-400 transition-colors"
+                onClick={() => setIsImageExpanded(false)}
+              >
+                <XCircle size={32} />
+              </button>
           </div>
         </div>
       )}
