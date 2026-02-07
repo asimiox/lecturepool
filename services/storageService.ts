@@ -14,7 +14,6 @@ import {
   getDocs, 
   deleteDoc, 
   getDoc,
-  enableIndexedDbPersistence,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
@@ -40,7 +39,6 @@ const CLOUDINARY_UPLOAD_PRESET: string = "lecturepool_unsigned";
 
 // Initialize Firebase
 let db: any;
-let isOfflineMode = false;
 
 try {
   const app = initializeApp(FIREBASE_CONFIG);
@@ -67,7 +65,7 @@ try {
       console.warn("Persistence not supported, falling back to standard.");
   } else {
     console.error("CRITICAL ERROR: Could not connect to Global Database", error);
-    isOfflineMode = true;
+    // Offline mode is handled by network checks, no need for separate variable here that triggers unused var warning
   }
 }
 
@@ -263,6 +261,28 @@ export const loginUser = async (rollNo: string, password: string): Promise<{ suc
   try {
     const cleanRollNo = rollNo.trim();
     const cleanPass = password.trim();
+
+    // --- AUTO-ADMIN CREATION LOGIC ---
+    if (cleanRollNo === 'admin' && cleanPass === 'admin123') {
+        const adminQ = query(collection(db, "users"), where("rollNo", "==", "admin"));
+        const adminSnap = await getDocs(adminQ);
+        if (adminSnap.empty) {
+            // Auto-create Admin if it doesn't exist
+            const newAdmin: User = {
+                id: 'admin_master',
+                name: 'Master Admin',
+                rollNo: 'admin',
+                password: 'admin123',
+                role: 'admin',
+                status: 'active'
+            };
+            if (isOnline()) {
+               await setDoc(doc(db, "users", 'admin_master'), newAdmin);
+               return { success: true, user: newAdmin, message: 'Default Admin account created & logged in.' };
+            }
+        }
+    }
+    // ---------------------------------
 
     // 1. Find user by Roll No first
     const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
