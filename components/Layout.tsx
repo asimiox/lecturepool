@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Screen, User } from '../types';
-import { BookOpen, LogOut, ShieldCheck, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff } from 'lucide-react';
+import { BookOpen, LogOut, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface LayoutProps {
