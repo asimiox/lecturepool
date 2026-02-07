@@ -1,9 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { Lecture, User } from '../types';
-import { subscribeToLectures, updateLectureStatus, subscribeToUsers, updateUserStatus, subscribeToSubjects, addSubject, updateSubject, deleteSubject, resetSubjects } from '../services/storageService';
+import { 
+    subscribeToLectures, 
+    updateLectureStatus, 
+    subscribeToUsers, 
+    updateUserStatus, 
+    subscribeToSubjects, 
+    addSubject, 
+    updateSubject, 
+    deleteSubject, 
+    resetSubjects,
+    deleteUser,
+    adminAddUser,
+    adminUpdateUser
+} from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
-import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader } from 'lucide-react';
+import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader, User as UserIcon, Lock } from 'lucide-react';
 
 type AdminTab = 'queue' | 'all_lectures' | 'students' | 'subjects';
 
@@ -14,6 +27,13 @@ export const AdminDashboardScreen: React.FC = () => {
   const [students, setStudents] = useState<User[]>([]);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   
+  // Student Management State
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<User | null>(null);
+  const [studentForm, setStudentForm] = useState({ name: '', rollNo: '', password: '' });
+  const [studentFormMsg, setStudentFormMsg] = useState('');
+  const [isProcessingStudent, setIsProcessingStudent] = useState(false);
+
   // Subject Management States
   const [subjects, setSubjects] = useState<string[]>([]);
   const [newSubject, setNewSubject] = useState('');
@@ -64,6 +84,69 @@ export const AdminDashboardScreen: React.FC = () => {
   
   const handleUserReject = async (id: string) => {
     await updateUserStatus(id, 'rejected');
+  };
+
+  // --- Student Management Handlers ---
+  const handleOpenAddStudent = () => {
+      setEditingStudent(null);
+      setStudentForm({ name: '', rollNo: '', password: '' });
+      setStudentFormMsg('');
+      setIsStudentModalOpen(true);
+  };
+
+  const handleOpenEditStudent = (student: User) => {
+      setEditingStudent(student);
+      setStudentForm({ name: student.name, rollNo: student.rollNo, password: '' }); // Password blank to keep unchanged
+      setStudentFormMsg('');
+      setIsStudentModalOpen(true);
+  };
+
+  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+      if(window.confirm(`Are you sure you want to permanently delete student "${studentName}"? This action cannot be undone.`)) {
+          await deleteUser(studentId);
+      }
+  };
+
+  const handleStudentFormSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsProcessingStudent(true);
+      setStudentFormMsg('');
+
+      if (!studentForm.name || !studentForm.rollNo) {
+          setStudentFormMsg('Name and Roll No are required.');
+          setIsProcessingStudent(false);
+          return;
+      }
+
+      if (!editingStudent && !studentForm.password) {
+          setStudentFormMsg('Password is required for new students.');
+          setIsProcessingStudent(false);
+          return;
+      }
+
+      let res;
+      if (editingStudent) {
+          // Edit
+          res = await adminUpdateUser(editingStudent.id, {
+              name: studentForm.name,
+              rollNo: studentForm.rollNo,
+              password: studentForm.password || undefined
+          });
+      } else {
+          // Add
+          res = await adminAddUser({
+              name: studentForm.name,
+              rollNo: studentForm.rollNo,
+              password: studentForm.password
+          });
+      }
+
+      if (res.success) {
+          setIsStudentModalOpen(false);
+      } else {
+          setStudentFormMsg(res.message);
+      }
+      setIsProcessingStudent(false);
   };
 
   // --- Subject Handlers ---
@@ -346,18 +429,40 @@ export const AdminDashboardScreen: React.FC = () => {
             {/* Active Students List */}
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-black text-navy-900 dark:text-navy-50">Registered Students</h2>
-                <div className="relative w-64">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search size={14} className="text-navy-400" />
+                <div className="flex items-center gap-4">
+                    <div className="relative w-64 hidden md:block">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search size={14} className="text-navy-400" />
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Search name or roll no..." 
+                            value={studentSearch}
+                            onChange={(e) => setStudentSearch(e.target.value)}
+                            className={searchInputClass}
+                        />
                     </div>
-                    <input 
-                        type="text" 
-                        placeholder="Search name or roll no..." 
-                        value={studentSearch}
-                        onChange={(e) => setStudentSearch(e.target.value)}
-                        className={searchInputClass}
-                    />
+                    <button 
+                        onClick={handleOpenAddStudent}
+                        className="px-4 py-2.5 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 transition-all flex items-center gap-2"
+                    >
+                        <Plus size={16} /> <span className="hidden sm:inline">Add Student</span>
+                    </button>
                 </div>
+            </div>
+            
+            {/* Mobile Search - Visible only on small screens */}
+            <div className="md:hidden mb-6 relative">
+                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={14} className="text-navy-400" />
+                </div>
+                <input 
+                    type="text" 
+                    placeholder="Search name or roll no..." 
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className={searchInputClass}
+                />
             </div>
 
             {students.length === 0 ? (
@@ -376,6 +481,7 @@ export const AdminDashboardScreen: React.FC = () => {
                                 <th className="px-6 py-4 text-left text-xs font-bold text-navy-600 dark:text-navy-300 uppercase tracking-wider">Roll No</th>
                                 <th className="px-6 py-4 text-left text-xs font-bold text-navy-600 dark:text-navy-300 uppercase tracking-wider">Name</th>
                                 <th className="px-6 py-4 text-left text-xs font-bold text-navy-600 dark:text-navy-300 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-4 text-right text-xs font-bold text-navy-600 dark:text-navy-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-navy-200 dark:divide-navy-800">
@@ -391,6 +497,24 @@ export const AdminDashboardScreen: React.FC = () => {
                                         <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 border border-green-200">
                                             Active
                                         </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button 
+                                                onClick={() => handleOpenEditStudent(student)}
+                                                className="p-1.5 text-navy-500 hover:text-navy-700 hover:bg-navy-100 rounded-lg transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Edit2 size={16} />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteStudent(student.id, student.name)}
+                                                className="p-1.5 text-maroon-500 hover:text-maroon-700 hover:bg-maroon-100 rounded-lg transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -505,6 +629,86 @@ export const AdminDashboardScreen: React.FC = () => {
             </>
         )}
       </div>
+
+      {/* Student Modal */}
+      {isStudentModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm">
+              <div className="bg-[#e6e9ef] dark:bg-[#1e212b] rounded-3xl shadow-neu-flat dark:shadow-neu-flat-dark w-full max-w-md p-6 relative">
+                  <button 
+                      onClick={() => setIsStudentModalOpen(false)}
+                      className="absolute top-4 right-4 text-navy-400 hover:text-navy-600 dark:hover:text-navy-200 transition-colors"
+                  >
+                      <X size={20} />
+                  </button>
+                  
+                  <h3 className="text-xl font-black text-navy-900 dark:text-navy-50 mb-6">
+                      {editingStudent ? 'Edit Student' : 'Add New Student'}
+                  </h3>
+                  
+                  <form onSubmit={handleStudentFormSubmit} className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Full Name</label>
+                          <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <UserIcon size={16} className="text-navy-400" />
+                              </div>
+                              <input 
+                                  type="text" 
+                                  value={studentForm.name}
+                                  onChange={(e) => setStudentForm({...studentForm, name: e.target.value})}
+                                  className={inputClass}
+                                  placeholder="e.g. John Doe"
+                              />
+                          </div>
+                      </div>
+                      
+                      <div>
+                          <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Roll Number</label>
+                          <input 
+                              type="text" 
+                              value={studentForm.rollNo}
+                              onChange={(e) => setStudentForm({...studentForm, rollNo: e.target.value})}
+                              className={inputClass}
+                              placeholder="e.g. 12345"
+                          />
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">
+                              {editingStudent ? 'New Password (Optional)' : 'Password'}
+                          </label>
+                          <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <Lock size={16} className="text-navy-400" />
+                              </div>
+                              <input 
+                                  type="text" 
+                                  value={studentForm.password}
+                                  onChange={(e) => setStudentForm({...studentForm, password: e.target.value})}
+                                  className={inputClass}
+                                  placeholder={editingStudent ? "Leave blank to keep current" : "••••••••"}
+                              />
+                          </div>
+                      </div>
+                      
+                      {studentFormMsg && (
+                           <div className="p-3 rounded-xl bg-maroon-50 dark:bg-maroon-900/20 text-maroon-600 dark:text-maroon-300 text-xs font-bold text-center border border-maroon-100 dark:border-maroon-800">
+                                {studentFormMsg}
+                           </div>
+                      )}
+
+                      <button 
+                          type="submit"
+                          disabled={isProcessingStudent}
+                          className="w-full mt-2 py-3 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                      >
+                          {isProcessingStudent ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
+                          {editingStudent ? 'Save Changes' : 'Create Student'}
+                      </button>
+                  </form>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
