@@ -22,6 +22,7 @@ export const LectureCard: React.FC<LectureCardProps> = ({
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [isImageExpanded, setIsImageExpanded] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleReject = () => {
     if (onReject && rejectReason.trim()) {
@@ -31,14 +32,37 @@ export const LectureCard: React.FC<LectureCardProps> = ({
     }
   };
 
-  const handleDownload = (e: React.MouseEvent) => {
+  const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const link = document.createElement('a');
-    link.href = lecture.imageURL;
-    link.download = `${lecture.subject}_${lecture.topic}_${lecture.rollNo}.png`.replace(/\s+/g, '_');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (isDownloading) return;
+
+    setIsDownloading(true);
+    try {
+      // Fetch the image as a blob to force download behavior even for cross-origin URLs
+      const response = await fetch(lecture.imageURL);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      // Sanitize filename
+      const safeSubject = lecture.subject.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const safeTopic = lecture.topic.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      link.download = `${safeSubject}_${safeTopic}_${lecture.rollNo}.jpg`;
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed, falling back to open", error);
+      // Fallback: Just open it in a new tab if fetch fails (CORS etc)
+      window.open(lecture.imageURL, '_blank');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleView = (e: React.MouseEvent) => {
@@ -77,10 +101,11 @@ export const LectureCard: React.FC<LectureCardProps> = ({
           <div className="absolute bottom-3 right-3">
              <button
                onClick={handleDownload}
-               className="p-2 rounded-lg bg-navy-900/80 text-white backdrop-blur-sm hover:bg-maroon-600 transition-colors shadow-sm"
+               disabled={isDownloading}
+               className={`p-2 rounded-lg bg-navy-900/80 text-white backdrop-blur-sm hover:bg-maroon-600 transition-colors shadow-sm ${isDownloading ? 'opacity-70 cursor-wait' : ''}`}
                title="Download Image"
              >
-               <Download size={14} />
+               <Download size={14} className={isDownloading ? 'animate-bounce' : ''} />
              </button>
           </div>
         )}
@@ -198,9 +223,11 @@ export const LectureCard: React.FC<LectureCardProps> = ({
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4">
              <button 
                 onClick={handleDownload}
+                disabled={isDownloading}
                 className="px-6 py-2 rounded-xl bg-maroon-600 text-white font-bold shadow-lg hover:bg-maroon-500 transition-colors flex items-center gap-2"
              >
-                <Download size={18} /> Download
+                <Download size={18} className={isDownloading ? 'animate-bounce' : ''} /> 
+                {isDownloading ? 'Downloading...' : 'Download'}
              </button>
           </div>
         </div>
