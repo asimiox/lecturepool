@@ -13,7 +13,8 @@ import {
     resetSubjects,
     deleteUser,
     adminAddUser,
-    adminUpdateUser
+    adminUpdateUser,
+    deleteLecture
 } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
 import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader, User as UserIcon, Lock } from 'lucide-react';
@@ -84,6 +85,10 @@ export const AdminDashboardScreen: React.FC = () => {
   
   const handleUserReject = async (id: string) => {
     await updateUserStatus(id, 'rejected');
+  };
+  
+  const handleDeleteLecture = async (id: string) => {
+      await deleteLecture(id);
   };
 
   // --- Student Management Handlers ---
@@ -375,6 +380,7 @@ export const AdminDashboardScreen: React.FC = () => {
                     key={lecture.id} 
                     lecture={lecture} 
                     isAdminView={true}
+                    onDelete={handleDeleteLecture} // Pass delete handler here
                     showAdminActions={lecture.status === 'pending'}
                     onApprove={handleApprove}
                     onReject={handleReject}
