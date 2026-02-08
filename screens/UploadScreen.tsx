@@ -18,6 +18,21 @@ interface FilePreview {
 const MAX_TOTAL_SIZE_MB = 10;
 const MAX_TOTAL_SIZE_BYTES = MAX_TOTAL_SIZE_MB * 1024 * 1024;
 
+// Robust Accept string for Android/iOS compatibility
+const ACCEPTED_FILE_TYPES = [
+    "image/*",
+    "application/pdf",
+    ".pdf",
+    "application/msword",
+    ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".docx",
+    "application/vnd.ms-powerpoint",
+    ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".pptx"
+].join(",");
+
 export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentUser }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -211,7 +226,9 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
 
         {/* File Upload Section */}
         <div>
-          <label className={labelClass}>Attachments (Max {MAX_TOTAL_SIZE_MB}MB Total)</label>
+          <label className={labelClass}>
+              Upload Documents (PDF, Word, PPT) or Images (Max {MAX_TOTAL_SIZE_MB}MB)
+          </label>
           <div 
             className={`mt-2 flex flex-col items-center justify-center px-6 py-8 rounded-2xl cursor-pointer transition-all duration-300 border-2 border-dashed ${
                isSubmitting ? 'border-gray-300 opacity-50' : 'border-navy-200 dark:border-navy-700 hover:border-navy-400 hover:bg-navy-50 dark:hover:bg-navy-800/50'
@@ -224,14 +241,14 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
              <span className="text-sm font-bold text-navy-700 dark:text-navy-200">
                 Click to add files
              </span>
-             <p className="text-xs text-navy-400 mt-1">Images, PDF, Word, PPT</p>
+             <p className="text-xs text-navy-400 mt-1">Supports PDF, DOC, DOCX, PPT, PPTX, JPG, PNG</p>
              <input 
                 id="file-upload" 
                 name="file-upload" 
                 type="file" 
                 multiple
                 className="sr-only" 
-                accept="image/*,.pdf,.doc,.docx,.ppt,.pptx"
+                accept={ACCEPTED_FILE_TYPES}
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 disabled={isSubmitting}

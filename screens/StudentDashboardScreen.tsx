@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Screen, Lecture, User } from '../types';
 import { subscribeToLectures, subscribeToSubjects } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
-import { CheckCircle, Clock, XCircle, Search, Filter, Calendar } from 'lucide-react';
+import { CheckCircle, Clock, XCircle, Search, Filter, Calendar, AlertTriangle } from 'lucide-react';
 
 interface StudentDashboardScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -52,12 +52,51 @@ export const StudentDashboardScreen: React.FC<StudentDashboardScreenProps> = ({ 
       pending: myLectures.filter(l => l.status === 'pending').length,
       rejected: myLectures.filter(l => l.status === 'rejected').length
   };
+  
+  // Daily Update Logic
+  const today = new Date().toISOString().split('T')[0];
+  const updatesToday = myLectures.filter(l => l.date === today && l.status !== 'pending');
+  const approvedToday = updatesToday.filter(l => l.status === 'approved').length;
+  const rejectedToday = updatesToday.filter(l => l.status === 'rejected').length;
 
   const inputClass = "w-full md:w-auto px-4 py-2.5 rounded-xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark border-transparent text-sm font-medium text-navy-800 dark:text-navy-100 placeholder-navy-400 outline-none transition-all";
   const selectClass = "w-full md:w-auto pl-10 pr-8 py-2.5 rounded-xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark border-transparent text-sm font-bold text-navy-800 dark:text-navy-100 outline-none cursor-pointer appearance-none transition-all";
 
   return (
     <div className="space-y-8">
+      
+      {/* ALERTS SECTION - Shows if there are updates today */}
+      {(approvedToday > 0 || rejectedToday > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {approvedToday > 0 && (
+                   <div className="p-4 rounded-2xl bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 flex items-center gap-3">
+                       <div className="p-2 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-200">
+                           <CheckCircle size={20} />
+                       </div>
+                       <div>
+                           <h4 className="text-sm font-bold text-navy-900 dark:text-navy-50">Updates Available</h4>
+                           <p className="text-xs text-navy-600 dark:text-navy-300">
+                               <span className="font-bold">{approvedToday}</span> of your lectures were approved today.
+                           </p>
+                       </div>
+                   </div>
+               )}
+               {rejectedToday > 0 && (
+                   <div className="p-4 rounded-2xl bg-maroon-50 dark:bg-maroon-900/10 border border-maroon-200 dark:border-maroon-800 flex items-center gap-3">
+                       <div className="p-2 rounded-full bg-maroon-100 dark:bg-maroon-800 text-maroon-600 dark:text-maroon-200">
+                           <AlertTriangle size={20} />
+                       </div>
+                       <div>
+                           <h4 className="text-sm font-bold text-maroon-900 dark:text-maroon-50">Action Required</h4>
+                           <p className="text-xs text-maroon-700 dark:text-maroon-300">
+                               <span className="font-bold">{rejectedToday}</span> lectures were rejected today. Check remarks.
+                           </p>
+                       </div>
+                   </div>
+               )}
+          </div>
+      )}
+
       {/* Top Section: Stats & Action */}
       <div className="bg-[#e6e9ef] dark:bg-[#1e212b] p-8 rounded-3xl shadow-neu-flat dark:shadow-neu-flat-dark">
         <div className="md:flex md:items-end md:justify-between gap-6">

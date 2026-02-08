@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Lecture, User } from '../types';
+import { Lecture, User, Announcement } from '../types';
 import { 
     subscribeToLectures, 
     updateLectureStatus, 
@@ -14,20 +14,35 @@ import {
     deleteUser,
     adminAddUser,
     adminUpdateUser,
-    deleteLecture
+    deleteLecture,
+    addAnnouncement,
+    subscribeToAnnouncements,
+    deleteAnnouncement,
+    updateAnnouncement
 } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
-import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader, User as UserIcon, Lock } from 'lucide-react';
+import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader, User as UserIcon, Lock, Bell, Megaphone, Send } from 'lucide-react';
 
-type AdminTab = 'queue' | 'all_lectures' | 'students' | 'subjects';
+type AdminTab = 'queue' | 'all_lectures' | 'students' | 'subjects' | 'announcements';
 
-export const AdminDashboardScreen: React.FC = () => {
+interface AdminDashboardProps {
+  showNotification?: (msg: string, type: 'success' | 'error' | 'info') => void;
+}
+
+export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotification }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('queue');
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [pendingLectures, setPendingLectures] = useState<Lecture[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   
+  // Announcement States
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementMsg, setAnnouncementMsg] = useState('');
+  const [targetAudience, setTargetAudience] = useState('all');
+  const [isPosting, setIsPosting] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+
   // Student Management State
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<User | null>(null);
@@ -64,31 +79,80 @@ export const AdminDashboardScreen: React.FC = () => {
         setSubjects(list);
     });
 
+    const unsubAnnouncements = subscribeToAnnouncements((list) => {
+        setAnnouncements(list);
+    });
+
     return () => {
         unsubLectures();
         unsubUsers();
         unsubSubjects();
+        unsubAnnouncements();
     };
   }, []);
 
   const handleApprove = async (id: string) => {
     await updateLectureStatus(id, 'approved');
+    showNotification?.("Lecture Approved", 'success');
   };
 
   const handleReject = async (id: string, reason: string) => {
     await updateLectureStatus(id, 'rejected', reason);
+    showNotification?.("Lecture Rejected", 'error');
   };
   
   const handleUserApprove = async (id: string) => {
     await updateUserStatus(id, 'active');
+    showNotification?.("User Approved", 'success');
   };
   
   const handleUserReject = async (id: string) => {
     await updateUserStatus(id, 'rejected');
+    showNotification?.("User Rejected", 'error');
   };
   
   const handleDeleteLecture = async (id: string) => {
       await deleteLecture(id);
+      showNotification?.("Lecture Deleted", 'success');
+  };
+
+  // --- Announcement Handlers ---
+  const handlePostAnnouncement = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!announcementMsg.trim()) return;
+
+      setIsPosting(true);
+      let targetName = 'All Students';
+      if (targetAudience !== 'all') {
+          const student = students.find(s => s.id === targetAudience);
+          targetName = student ? `${student.name} (${student.rollNo})` : 'Unknown Student';
+      }
+
+      const res = await addAnnouncement(announcementMsg, targetAudience, targetName, 'Admin');
+      
+      if (res.success) {
+          setAnnouncementMsg('');
+          setTargetAudience('all');
+          showNotification?.("Announcement Posted", 'success');
+      } else {
+          showNotification?.("Failed to post announcement", 'error');
+      }
+      setIsPosting(false);
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+      if(window.confirm("Delete this announcement?")) {
+          await deleteAnnouncement(id);
+          showNotification?.("Announcement Deleted", 'success');
+      }
+  };
+
+  const handleUpdateAnnouncement = async (id: string) => {
+      if (editingAnnouncement && editingAnnouncement.message.trim()) {
+          await updateAnnouncement(id, editingAnnouncement.message);
+          setEditingAnnouncement(null);
+          showNotification?.("Announcement Updated", 'success');
+      }
   };
 
   // --- Student Management Handlers ---
@@ -101,7 +165,7 @@ export const AdminDashboardScreen: React.FC = () => {
 
   const handleOpenEditStudent = (student: User) => {
       setEditingStudent(student);
-      setStudentForm({ name: student.name, rollNo: student.rollNo, password: '' }); // Password blank to keep unchanged
+      setStudentForm({ name: student.name, rollNo: student.rollNo, password: '' }); 
       setStudentFormMsg('');
       setIsStudentModalOpen(true);
   };
@@ -109,6 +173,7 @@ export const AdminDashboardScreen: React.FC = () => {
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
       if(window.confirm(`Are you sure you want to permanently delete student "${studentName}"? This action cannot be undone.`)) {
           await deleteUser(studentId);
+          showNotification?.("Student Deleted", 'success');
       }
   };
 
@@ -131,14 +196,12 @@ export const AdminDashboardScreen: React.FC = () => {
 
       let res;
       if (editingStudent) {
-          // Edit
           res = await adminUpdateUser(editingStudent.id, {
               name: studentForm.name,
               rollNo: studentForm.rollNo,
               password: studentForm.password || undefined
           });
       } else {
-          // Add
           res = await adminAddUser({
               name: studentForm.name,
               rollNo: studentForm.rollNo,
@@ -148,6 +211,7 @@ export const AdminDashboardScreen: React.FC = () => {
 
       if (res.success) {
           setIsStudentModalOpen(false);
+          showNotification?.(editingStudent ? "Student Updated" : "Student Added", 'success');
       } else {
           setStudentFormMsg(res.message);
       }
@@ -164,6 +228,7 @@ export const AdminDashboardScreen: React.FC = () => {
       if (res.success) {
           setNewSubject('');
           setSubjectMsg('');
+          showNotification?.("Subject Added", 'success');
       } else {
           setSubjectMsg(res.message);
       }
@@ -189,6 +254,7 @@ export const AdminDashboardScreen: React.FC = () => {
       const res = await updateSubject(editingSubject, editSubjectName.trim());
       if (res.success) {
           setEditingSubject(null);
+          showNotification?.("Subject Updated", 'success');
       } else {
           setSubjectMsg(res.message);
       }
@@ -202,6 +268,7 @@ export const AdminDashboardScreen: React.FC = () => {
           setIsProcessingSubject(true);
           await deleteSubject(subject);
           setIsProcessingSubject(false);
+          showNotification?.("Subject Deleted", 'success');
       }
   };
 
@@ -210,6 +277,7 @@ export const AdminDashboardScreen: React.FC = () => {
           setIsProcessingSubject(true);
           await resetSubjects();
           setIsProcessingSubject(false);
+          showNotification?.("Subjects Reset", 'success');
       }
   };
 
@@ -228,10 +296,10 @@ export const AdminDashboardScreen: React.FC = () => {
     l.rollNo.toLowerCase().includes(lectureSearch.toLowerCase())
   );
 
-  const StatCard = ({ icon: Icon, label, value, colorClass, onClick }: any) => (
+  const StatCard = ({ icon: Icon, label, value, colorClass, onClick, pulse }: any) => (
     <div 
         onClick={onClick}
-        className={`p-6 rounded-3xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark flex items-center gap-4 ${onClick ? 'cursor-pointer hover:shadow-neu-pressed dark:hover:shadow-neu-pressed-dark transition-all ring-2 ring-transparent hover:ring-navy-200 dark:hover:ring-navy-700' : ''}`}
+        className={`p-6 rounded-3xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark flex items-center gap-4 ${onClick ? 'cursor-pointer hover:shadow-neu-pressed dark:hover:shadow-neu-pressed-dark transition-all ring-2 ring-transparent hover:ring-navy-200 dark:hover:ring-navy-700' : ''} ${pulse ? 'animate-pulse' : ''}`}
     >
         <div className={`p-4 rounded-2xl ${colorClass} text-white shadow-neu-flat dark:shadow-none`}>
             <Icon size={24} />
@@ -249,6 +317,31 @@ export const AdminDashboardScreen: React.FC = () => {
   return (
     <div className="space-y-10">
       
+      {/* NOTIFICATION BANNER FOR ADMIN */}
+      {pendingLectures.length > 0 && (
+          <div className="p-4 rounded-2xl bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-700/30 flex items-center justify-between shadow-sm animate-pulse-slow">
+             <div className="flex items-center gap-4">
+                <div className="p-2.5 bg-yellow-100 dark:bg-yellow-800 rounded-full text-yellow-700 dark:text-yellow-200">
+                   <Bell size={20} className="animate-bounce" />
+                </div>
+                <div>
+                   <h4 className="font-bold text-navy-900 dark:text-navy-50">Action Required</h4>
+                   <p className="text-sm text-navy-600 dark:text-navy-300 font-medium">
+                     You have <span className="text-maroon-600 dark:text-maroon-400 font-bold">{pendingLectures.length}</span> new lecture{pendingLectures.length > 1 ? 's' : ''} waiting for approval.
+                   </p>
+                </div>
+             </div>
+             {activeTab !== 'queue' && (
+                 <button 
+                   onClick={() => setActiveTab('queue')}
+                   className="px-5 py-2.5 rounded-xl bg-navy-900 text-white text-xs font-bold shadow-lg hover:scale-105 transition-transform"
+                 >
+                   Review Now
+                 </button>
+             )}
+          </div>
+      )}
+
       {/* Analytics Section */}
       <div>
         <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50 mb-6 flex items-center gap-2">
@@ -256,7 +349,14 @@ export const AdminDashboardScreen: React.FC = () => {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatCard icon={CheckCircle} label="Total Uploads" value={totalUploads} colorClass="bg-navy-600" onClick={() => setActiveTab('all_lectures')} />
-            <StatCard icon={Clock} label="Pending Review" value={pendingLectures.length} colorClass="bg-maroon-600" onClick={() => setActiveTab('queue')} />
+            <StatCard 
+                icon={Clock} 
+                label="Pending Review" 
+                value={pendingLectures.length} 
+                colorClass="bg-maroon-600" 
+                onClick={() => setActiveTab('queue')}
+                pulse={pendingLectures.length > 0} 
+            />
             <StatCard icon={Book} label="Active Subjects" value={subjects.length} colorClass="bg-indigo-600" onClick={() => setActiveTab('subjects')} />
             <StatCard icon={Users} label="Total Students" value={students.length} colorClass="bg-purple-600" onClick={() => setActiveTab('students')} />
         </div>
@@ -270,7 +370,7 @@ export const AdminDashboardScreen: React.FC = () => {
         <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark self-start w-full xl:w-auto">
              <button
                onClick={() => setActiveTab('queue')}
-               className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap flex-grow xl:flex-grow-0 justify-center ${
+               className={`relative flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap flex-grow xl:flex-grow-0 justify-center ${
                  activeTab === 'queue'
                   ? 'bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark text-maroon-600 dark:text-maroon-400' 
                   : 'text-navy-400 hover:text-navy-600'
@@ -278,7 +378,12 @@ export const AdminDashboardScreen: React.FC = () => {
              >
                <Clock size={14} /> Queue
                {pendingLectures.length > 0 && (
-                 <span className="ml-1 px-1.5 py-0.5 rounded-full bg-maroon-500 text-white text-[10px]">{pendingLectures.length}</span>
+                 <span className="ml-1 px-1.5 py-0.5 rounded-full bg-maroon-500 text-white text-[10px] animate-pulse">
+                     {pendingLectures.length}
+                 </span>
+               )}
+               {pendingLectures.length > 0 && activeTab !== 'queue' && (
+                   <span className="absolute top-0 right-0 -mt-1 -mr-1 h-3 w-3 bg-red-500 rounded-full animate-ping"></span>
                )}
              </button>
              <button
@@ -300,9 +405,6 @@ export const AdminDashboardScreen: React.FC = () => {
                }`}
              >
                <Users size={14} /> Students
-               {pendingUsers.length > 0 && (
-                 <span className="ml-1 px-1.5 py-0.5 rounded-full bg-navy-500 text-white text-[10px]">{pendingUsers.length}</span>
-               )}
              </button>
              <button
                onClick={() => setActiveTab('subjects')}
@@ -313,6 +415,16 @@ export const AdminDashboardScreen: React.FC = () => {
                }`}
              >
                <Book size={14} /> Subjects
+             </button>
+             <button
+               onClick={() => setActiveTab('announcements')}
+               className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap flex-grow xl:flex-grow-0 justify-center ${
+                 activeTab === 'announcements'
+                  ? 'bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark text-navy-900 dark:text-navy-100' 
+                  : 'text-navy-400 hover:text-navy-600'
+               }`}
+             >
+               <Megaphone size={14} /> Announcements
              </button>
         </div>
       </div>
@@ -633,6 +745,108 @@ export const AdminDashboardScreen: React.FC = () => {
                     </div>
                 </div>
             </>
+        )}
+
+        {activeTab === 'announcements' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                {/* List Announcements */}
+                <div>
+                    <h2 className="text-xl font-black text-navy-900 dark:text-navy-50 mb-6">Active Announcements</h2>
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                        {announcements.length === 0 ? (
+                             <div className="text-center py-12 rounded-2xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark">
+                                <p className="text-navy-400">No active announcements.</p>
+                             </div>
+                        ) : (
+                            announcements.map((ann) => (
+                                <div key={ann.id} className="p-4 rounded-2xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark relative group hover:shadow-neu-pressed transition-all">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-navy-500 bg-navy-100 dark:bg-navy-800 px-2 py-0.5 rounded-full">
+                                            To: {ann.audienceName || 'All'}
+                                        </span>
+                                        <span className="text-[10px] text-navy-400 font-mono">{ann.date}</span>
+                                    </div>
+                                    
+                                    {editingAnnouncement?.id === ann.id ? (
+                                        <div className="mt-2">
+                                            <textarea 
+                                                className="w-full p-2 text-sm rounded-lg bg-white dark:bg-navy-900 border border-navy-300 dark:border-navy-600"
+                                                value={editingAnnouncement.message}
+                                                onChange={(e) => setEditingAnnouncement({...editingAnnouncement, message: e.target.value})}
+                                            />
+                                            <div className="flex gap-2 mt-2">
+                                                <button onClick={() => handleUpdateAnnouncement(ann.id)} className="px-3 py-1 bg-green-600 text-white text-xs rounded">Save</button>
+                                                <button onClick={() => setEditingAnnouncement(null)} className="px-3 py-1 bg-gray-500 text-white text-xs rounded">Cancel</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm font-medium text-navy-800 dark:text-navy-100 mt-1 whitespace-pre-wrap">
+                                            {ann.message}
+                                        </p>
+                                    )}
+
+                                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                         <button 
+                                            onClick={() => setEditingAnnouncement(ann)}
+                                            className="p-1.5 bg-navy-200 dark:bg-navy-700 rounded-md text-navy-700 dark:text-navy-200 hover:text-navy-900"
+                                         >
+                                            <Edit2 size={14} />
+                                         </button>
+                                         <button 
+                                            onClick={() => handleDeleteAnnouncement(ann.id)}
+                                            className="p-1.5 bg-maroon-100 dark:bg-maroon-900/40 rounded-md text-maroon-600 hover:text-maroon-800"
+                                         >
+                                            <Trash2 size={14} />
+                                         </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Create Announcement */}
+                <div className="h-fit p-6 rounded-3xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark sticky top-24">
+                     <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50 mb-4 flex items-center gap-2">
+                         <Megaphone size={20} className="text-maroon-600" /> Post Announcement
+                     </h3>
+                     <form onSubmit={handlePostAnnouncement} className="space-y-4">
+                         <div>
+                             <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Target Audience</label>
+                             <select 
+                                value={targetAudience}
+                                onChange={(e) => setTargetAudience(e.target.value)}
+                                className={inputClass}
+                             >
+                                 <option value="all">All Students</option>
+                                 {students.map(s => (
+                                     <option key={s.id} value={s.id}>{s.name} ({s.rollNo})</option>
+                                 ))}
+                             </select>
+                         </div>
+
+                         <div>
+                             <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Message</label>
+                             <textarea 
+                                value={announcementMsg}
+                                onChange={(e) => setAnnouncementMsg(e.target.value)}
+                                rows={5}
+                                className={inputClass}
+                                placeholder="Type your announcement here..."
+                             />
+                         </div>
+
+                         <button 
+                            type="submit"
+                            disabled={isPosting || !announcementMsg.trim()}
+                            className="w-full py-3 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                         >
+                             {isPosting ? <Loader size={18} className="animate-spin" /> : <Send size={18} />}
+                             Post Announcement
+                         </button>
+                     </form>
+                </div>
+            </div>
         )}
       </div>
 
