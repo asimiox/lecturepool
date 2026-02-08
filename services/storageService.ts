@@ -229,7 +229,7 @@ export const subscribeToUsers = (callback: (users: User[]) => void): () => void 
   const q = query(collection(db, "users"));
   return onSnapshot(q, (snapshot) => {
     const users: User[] = [];
-    snapshot.forEach(doc => users.push(doc.data() as User));
+    snapshot.forEach(d => users.push(d.data() as User));
     callback(users);
   });
 };
@@ -388,7 +388,7 @@ export const loginUser = async (rollNo: string, password: string): Promise<{ suc
     }
     
     // 2. Check password in memory
-    const userDoc = snapshot.docs.find(doc => doc.data().password === cleanPass);
+    const userDoc = snapshot.docs.find(d => d.data().password === cleanPass);
 
     if (!userDoc) {
         return { success: false, message: 'Incorrect password.' };
@@ -433,7 +433,7 @@ export const subscribeToAnnouncements = (callback: (announcements: Announcement[
   const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
   return onSnapshot(q, (snapshot) => {
     const announcements: Announcement[] = [];
-    snapshot.forEach(doc => announcements.push(doc.data() as Announcement));
+    snapshot.forEach(d => announcements.push(d.data() as Announcement));
     callback(announcements);
   });
 };
@@ -482,8 +482,8 @@ export const subscribeToLectures = (callback: (lectures: Lecture[]) => void): ()
   const q = query(collection(db, "lectures"), orderBy("timestamp", "desc"));
   return onSnapshot(q, (snapshot) => {
     const lectures: Lecture[] = [];
-    snapshot.forEach(doc => {
-        const data = doc.data() as Lecture;
+    snapshot.forEach(d => {
+        const data = d.data() as Lecture;
         // Fix for backward compatibility with old single-image lectures
         if (!data.attachments && data.imageURL) {
             data.attachments = [{
