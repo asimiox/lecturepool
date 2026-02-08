@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Screen, User } from '../types';
-import { BookOpen, LogOut, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff } from 'lucide-react';
+import { BookOpen, LogOut, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff, Bell, Megaphone } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { subscribeToAnnouncements } from '../services/storageService';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -53,6 +54,7 @@ export const Layout: React.FC<LayoutProps> = ({
   // Easter Egg State
   const [logoClicks, setLogoClicks] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -67,18 +69,31 @@ export const Layout: React.FC<LayoutProps> = ({
     };
   }, []);
 
+  // Listen for announcements to show badge
+  useEffect(() => {
+    if (!currentUser || currentUser.role === 'admin') return;
+
+    const unsub = subscribeToAnnouncements((list) => {
+       // Simple logic: Count announcements from today for this user
+       const today = new Date().toISOString().split('T')[0];
+       const relevant = list.filter(a => 
+           (a.audience === 'all' || a.audience === currentUser.id) &&
+           a.date === today
+       );
+       setUnreadAnnouncements(relevant.length);
+    });
+
+    return () => unsub();
+  }, [currentUser]);
+
   // If no user (and not on Auth screen logic handled in App), show minimal layout
   if (!currentUser) return <>{children}</>;
 
   const isAdmin = currentUser.role === 'admin';
-  // Use getHours for hourly rotation. % length ensures it loops if we don't have exactly 24 quotes
   const hourlyQuote = QUOTES[new Date().getHours() % QUOTES.length];
 
   const handleLogoClick = () => {
-    // Navigate home
     onNavigate(Screen.HOME);
-    
-    // Easter Egg Logic
     const newCount = logoClicks + 1;
     setLogoClicks(newCount);
 
@@ -87,11 +102,18 @@ export const Layout: React.FC<LayoutProps> = ({
         particleCount: 150,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#000080', '#800000', '#ffffff'] // Navy, Maroon, White
+        colors: ['#000080', '#800000', '#ffffff'] 
       });
-      setLogoClicks(0); // Reset
+      setLogoClicks(0); 
     }
   };
+
+  const navButtonClass = (screen: Screen) => `
+    px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 relative
+    ${currentScreen === screen
+      ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
+      : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')}
+  `;
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${isDarkMode ? 'text-navy-50' : 'text-navy-900'}`}>
@@ -99,7 +121,7 @@ export const Layout: React.FC<LayoutProps> = ({
       <header className={`sticky top-0 z-50 transition-colors duration-300 ${isDarkMode ? 'bg-[#1e212b] shadow-neu-flat-dark' : 'bg-[#e6e9ef] shadow-neu-flat'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            {/* Logo with Easter Egg Click Handler */}
+            {/* Logo */}
             <div className="flex items-center cursor-pointer group select-none" onClick={handleLogoClick}>
               <div className={`p-2.5 rounded-xl mr-3 transition-all duration-300 ${
                 isDarkMode 
@@ -134,61 +156,32 @@ export const Layout: React.FC<LayoutProps> = ({
 
               <nav className="hidden md:flex space-x-4">
                 {isAdmin ? (
-                  // Admin Nav
                   <>
-                    <button
-                      onClick={() => onNavigate(Screen.HOME)}
-                      className={`px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 ${
-                        currentScreen === Screen.HOME
-                          ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
-                          : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')
-                      }`}
-                    >
+                    <button onClick={() => onNavigate(Screen.HOME)} className={navButtonClass(Screen.HOME)}>
                       Dashboard
                     </button>
-                    <button
-                      onClick={() => onNavigate(Screen.LIBRARY)}
-                      className={`px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 ${
-                        currentScreen === Screen.LIBRARY
-                          ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
-                          : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')
-                      }`}
-                    >
+                    <button onClick={() => onNavigate(Screen.LIBRARY)} className={navButtonClass(Screen.LIBRARY)}>
                       All Uploads
                     </button>
                   </>
                 ) : (
-                  // Student Nav
                   <>
-                    <button
-                      onClick={() => onNavigate(Screen.HOME)}
-                      className={`px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 ${
-                        currentScreen === Screen.HOME
-                          ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
-                          : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')
-                      }`}
-                    >
+                    <button onClick={() => onNavigate(Screen.HOME)} className={navButtonClass(Screen.HOME)}>
                       Today's Lectures
                     </button>
-                    <button
-                      onClick={() => onNavigate(Screen.MY_UPLOADS)}
-                      className={`px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 ${
-                        currentScreen === Screen.MY_UPLOADS
-                          ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
-                          : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')
-                      }`}
-                    >
+                    <button onClick={() => onNavigate(Screen.MY_UPLOADS)} className={navButtonClass(Screen.MY_UPLOADS)}>
                       My Uploads
                     </button>
-                    <button
-                      onClick={() => onNavigate(Screen.LIBRARY)}
-                      className={`px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 ${
-                        currentScreen === Screen.LIBRARY
-                          ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
-                          : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')
-                      }`}
-                    >
-                      All Lectures
+                    <button onClick={() => onNavigate(Screen.LIBRARY)} className={navButtonClass(Screen.LIBRARY)}>
+                      Archive
+                    </button>
+                    <button onClick={() => onNavigate(Screen.ANNOUNCEMENTS)} className={navButtonClass(Screen.ANNOUNCEMENTS)}>
+                      Announcements
+                      {unreadAnnouncements > 0 && (
+                          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white animate-pulse">
+                              {unreadAnnouncements}
+                          </span>
+                      )}
                     </button>
                   </>
                 )}
@@ -251,7 +244,7 @@ export const Layout: React.FC<LayoutProps> = ({
         {children}
       </main>
 
-      {/* Footer - Extra Compact Version with Morphing Text */}
+      {/* Footer */}
       <footer className={`mt-auto py-3 transition-colors duration-300 ${isDarkMode ? 'bg-[#1e212b] border-t border-navy-800' : 'bg-[#e6e9ef] border-t border-white'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="flex flex-col md:flex-row justify-between items-center text-[10px] gap-2">
@@ -259,12 +252,10 @@ export const Layout: React.FC<LayoutProps> = ({
                  Lecture<span className="text-maroon-600">Pool</span>
               </div>
               
-              {/* Morphing Text with Gradient Background Logic */}
               <div className="font-black text-sm tracking-wider uppercase bg-gradient-to-r from-navy-900 via-maroon-600 to-navy-900 dark:from-navy-200 dark:via-maroon-400 dark:to-navy-200 animate-gradient-x bg-clip-text text-transparent transform hover:scale-105 transition-transform duration-300 cursor-default">
                 Made with ❤ By Asim Nawaz
               </div>
 
-              {/* Hourly Changing Quote */}
               <div className="italic opacity-70 hidden md:block text-navy-500 dark:text-navy-400 text-right max-w-xs">
                  "{hourlyQuote}"
               </div>

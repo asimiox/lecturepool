@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Lecture, Attachment } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { Calendar, User, XCircle, Download, Maximize2, FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Calendar, User, XCircle, Download, Maximize2, FileText, Image as ImageIcon, Trash2, ExternalLink } from 'lucide-react';
 
 interface LectureCardProps {
   lecture: Lecture;
@@ -46,9 +46,15 @@ export const LectureCard: React.FC<LectureCardProps> = ({
     }
   };
 
-  const handleDownload = (url: string, name: string) => {
-      // Direct open in new tab for reliable downloading of various file types
-      window.open(url, '_blank');
+  // HELPER: Transform Cloudinary URL to force download
+  // This adds 'fl_attachment' to the transformation part of the URL.
+  // This tells the browser to treat it as a download (Content-Disposition: attachment).
+  const getDownloadUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('cloudinary.com') && url.includes('/upload/')) {
+        return url.replace('/upload/', '/upload/fl_attachment/');
+    }
+    return url;
   };
 
   return (
@@ -119,18 +125,26 @@ export const LectureCard: React.FC<LectureCardProps> = ({
         
         {/* Document Attachments List */}
         {files.length > 0 && (
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="mb-4 flex flex-col gap-2">
                 {files.map((file) => (
-                    <button
+                    // Using <a> tag with target="_blank" and modified URL is best for Android downloads
+                    // Added 'download' attribute as a fallback signal for the browser
+                    <a
                         key={file.id}
-                        onClick={(e) => { e.stopPropagation(); handleDownload(file.url, file.name); }}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-navy-100 dark:bg-navy-800 text-navy-700 dark:text-navy-200 text-xs font-bold hover:bg-navy-200 dark:hover:bg-navy-700 transition-colors"
-                        title={file.name}
+                        href={getDownloadUrl(file.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={file.name}
+                        className="flex items-center justify-between px-3 py-3 rounded-lg bg-navy-100 dark:bg-navy-800 text-navy-700 dark:text-navy-200 text-xs font-bold hover:bg-navy-200 dark:hover:bg-navy-700 transition-colors group/file active:scale-95 transform"
+                        title={`Download ${file.name}`}
+                        onClick={(e) => e.stopPropagation()}
                     >
-                        <FileText size={12} />
-                        <span className="truncate max-w-[100px]">{file.name}</span>
-                        <Download size={12} className="opacity-50" />
-                    </button>
+                        <div className="flex items-center gap-2 overflow-hidden">
+                            <FileText size={16} className="flex-shrink-0 text-navy-500" />
+                            <span className="truncate">{file.name}</span>
+                        </div>
+                        <Download size={16} className="text-navy-400 group-hover/file:text-navy-800 dark:group-hover/file:text-navy-100" />
+                    </a>
                 ))}
             </div>
         )}
@@ -240,12 +254,15 @@ export const LectureCard: React.FC<LectureCardProps> = ({
               )}
               
               <div className="mt-6 flex gap-4">
-                  <button 
-                      onClick={() => handleDownload(images[activeImageIndex].url, images[activeImageIndex].name)}
+                  <a 
+                      href={getDownloadUrl(images[activeImageIndex].url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
                       className="px-6 py-2 rounded-xl bg-maroon-600 text-white font-bold shadow-lg hover:bg-maroon-500 transition-colors flex items-center gap-2"
                   >
-                      <Download size={18} /> Download This Image
-                  </button>
+                      <Download size={18} /> Download Image
+                  </a>
               </div>
 
               <button 
