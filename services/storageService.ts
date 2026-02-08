@@ -1,5 +1,5 @@
 
-import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS, Attachment, Announcement } from '../types';
+import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS, Attachment, Announcement, Liker } from '../types';
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
 import { 
@@ -54,19 +54,15 @@ try {
   console.log("🔥 Connected to Global Database with Persistence");
 } catch (error: any) {
   if (error.code === 'failed-precondition') {
-      // Multiple tabs open, persistence can only be enabled in one tab at a a time.
-      // Fallback to standard init
       const app = initializeApp(FIREBASE_CONFIG);
       db = getFirestore(app);
       console.warn("Persistence failed (Multiple tabs open), falling back to standard.");
   } else if (error.code === 'unimplemented') {
-      // The current browser does not support all of the features required to enable persistence
       const app = initializeApp(FIREBASE_CONFIG);
       db = getFirestore(app);
       console.warn("Persistence not supported, falling back to standard.");
   } else {
     console.error("CRITICAL ERROR: Could not connect to Global Database", error);
-    // Offline mode is handled by network checks, no need for separate variable here that triggers unused var warning
   }
 }
 
@@ -88,9 +84,6 @@ const uploadToCloudinary = async (base64Data: string, fileName: string, mimeType
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
   formData.append('folder', 'lecture_pool');
   
-  // DETERMINE RESOURCE TYPE
-  // 'image' for images, 'raw' for everything else (PDFs, Docs).
-  // Using 'auto' or 'image' for PDFs can cause them to be processed/converted, leading to "contains errors" when viewing.
   let resourceType = 'raw';
   if (mimeType.startsWith('image/')) {
       resourceType = 'image';
@@ -100,8 +93,6 @@ const uploadToCloudinary = async (base64Data: string, fileName: string, mimeType
       const safeName = fileName.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
       const uniqueName = `${safeName.substring(0, safeName.lastIndexOf('.'))}_${Date.now()}`;
       
-      // For RAW files, we usually want to preserve the extension in the public_id ensures the URL ends with it.
-      // Cloudinary 'raw' doesn't auto-append extensions as reliably as 'image'.
       if (resourceType === 'raw') {
          const ext = fileName.split('.').pop();
          formData.append('public_id', `${uniqueName}.${ext}`);
@@ -111,7 +102,6 @@ const uploadToCloudinary = async (base64Data: string, fileName: string, mimeType
   }
 
   try {
-      // Use specific resource type endpoint
       const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
           method: 'POST',
           body: formData
@@ -119,12 +109,11 @@ const uploadToCloudinary = async (base64Data: string, fileName: string, mimeType
 
       if (!response.ok) {
           const errData = await response.json();
-          console.error("Cloudinary Error:", errData);
           throw new Error(`Global Upload Failed: ${errData.error?.message || 'Unknown error'}`);
       }
 
       const data = await response.json();
-      return data.secure_url; // Returns the permanent HTTP URL
+      return data.secure_url;
   } catch (error: any) {
       throw new Error("File upload failed. Please check your internet connection.");
   }
@@ -135,12 +124,10 @@ const uploadToCloudinary = async (base64Data: string, fileName: string, mimeType
 export const subscribeToSubjects = (callback: (subjects: string[]) => void): () => void => {
   if (!db) return () => {};
   
-  // Connect to the global 'config' collection
   const unsub = onSnapshot(doc(db, "config", "subjects"), (docSnapshot) => {
     if (docSnapshot.exists()) {
       callback(docSnapshot.data().list || DEFAULT_SUBJECTS);
     } else {
-      // If global list doesn't exist, create it (only if online to avoid sync issues)
       if (isOnline()) {
          setDoc(docSnapshot.ref, { list: DEFAULT_SUBJECTS }).catch(e => console.error("Auto-create subjects failed", e));
       }
@@ -157,20 +144,16 @@ export const addSubject = async (subject: string): Promise<{ success: boolean, m
 
   try {
     const docRef = doc(db, "config", "subjects");
-    // Use arrayUnion to atomically add the subject. 
-    // This ensures no overwrites if multiple admins add subjects simultaneously.
     await updateDoc(docRef, {
       list: arrayUnion(subject)
     });
     return { success: true, message: 'Subject added globally' };
   } catch (e: any) {
-    // If document doesn't exist yet, updateDoc fails. We try setDoc.
     try {
         const docRef = doc(db, "config", "subjects");
         await setDoc(docRef, { list: [subject] }, { merge: true });
         return { success: true, message: 'Subject added globally' };
     } catch (innerErr) {
-        console.error(e);
         return { success: false, message: 'Failed to add subject. Check connection.' };
     }
   }
@@ -181,9 +164,6 @@ export const updateSubject = async (oldName: string, newName: string): Promise<{
 
   try {
     const docRef = doc(db, "config", "subjects");
-    
-    // Use a transaction to safely rename.
-    // This ensures we read the LATEST version of the list before modifying it.
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) {
@@ -198,7 +178,6 @@ export const updateSubject = async (oldName: string, newName: string): Promise<{
 
     return { success: true, message: 'Subject updated globally' };
   } catch (e) {
-    console.error(e);
     return { success: false, message: 'Update failed' };
   }
 };
@@ -207,8 +186,6 @@ export const deleteSubject = async (subject: string): Promise<void> => {
   if (!db) return;
   try {
     const docRef = doc(db, "config", "subjects");
-    // Use arrayRemove to atomically remove the subject.
-    // This guarantees it is removed regardless of what other data is in the list.
     await updateDoc(docRef, {
       list: arrayRemove(subject)
     });
@@ -222,7 +199,7 @@ export const resetSubjects = async (): Promise<void> => {
   await setDoc(doc(db, "config", "subjects"), { list: DEFAULT_SUBJECTS });
 };
 
-// --- USER SERVICES (GLOBAL AUTH) ---
+// --- USER SERVICES ---
 
 export const subscribeToUsers = (callback: (users: User[]) => void): () => void => {
   if (!db) return () => {};
@@ -234,14 +211,13 @@ export const subscribeToUsers = (callback: (users: User[]) => void): () => void 
   });
 };
 
-// Listen to specific user profile (Active Session Management)
 export const subscribeToUserProfile = (userId: string, callback: (user: User | null) => void): () => void => {
   if (!db) return () => {};
   return onSnapshot(doc(db, "users", userId), (docSnap) => {
     if (docSnap.exists()) {
       callback(docSnap.data() as User);
     } else {
-      callback(null); // User deleted
+      callback(null);
     }
   });
 };
@@ -251,230 +227,252 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
   if (!isOnline()) return { success: false, message: "Internet required for registration." };
 
   try {
-    // Sanitize input to prevent whitespace issues
     const cleanRollNo = user.rollNo.trim();
     const cleanUser = { 
         ...user, 
         rollNo: cleanRollNo,
-        name: user.name.trim(),
-        password: user.password.trim(),
-        status: user.status 
+        name: user.name.trim() 
     };
 
-    // Check if user exists globally using cleanRollNo
     const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
-    // Force fetch from server to avoid cache conflicts during registration
-    const snapshot = await getDocs(q); 
-    
-    if (!snapshot.empty) return { success: false, message: 'This Roll Number is already registered.' };
+    const querySnapshot = await getDocs(q);
 
-    await setDoc(doc(db, "users", cleanUser.id), cleanUser);
-    return { success: true, message: 'Registration successful' };
+    if (!querySnapshot.empty) {
+      return { success: false, message: "Roll Number already registered." };
+    }
+
+    await setDoc(doc(db, "users", user.id), cleanUser);
+    return { success: true, message: "Registration successful" };
   } catch (error: any) {
-    console.error("Register Error:", error);
-    if (error.code === 'permission-denied') {
-        return { success: false, message: 'Database permissions denied. Please contact admin.' };
-    }
-    return { success: false, message: 'Registration failed. Server might be unreachable.' };
+    return { success: false, message: "Registration failed. Try again." };
   }
 };
 
-export const adminAddUser = async (userData: { name: string; rollNo: string; password: string }): Promise<{ success: boolean; message: string }> => {
+export const loginUser = async (rollNo: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
   if (!db) return { success: false, message: "No database connection" };
-  
-  try {
-      const cleanRollNo = userData.rollNo.trim();
-      
-      // Check duplicate
-      const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) return { success: false, message: 'Roll Number already registered.' };
-
-      const newUser: User = {
-          id: crypto.randomUUID(),
-          name: userData.name.trim(),
-          rollNo: cleanRollNo,
-          password: userData.password.trim(),
-          role: 'student',
-          status: 'active' // Admin added users are auto-active
-      };
-
-      await setDoc(doc(db, "users", newUser.id), newUser);
-      return { success: true, message: 'Student added successfully' };
-  } catch (e) {
-      console.error(e);
-      return { success: false, message: 'Failed to add student.' };
-  }
-};
-
-export const adminUpdateUser = async (userId: string, updates: { name: string; rollNo: string; password?: string }): Promise<{ success: boolean; message: string }> => {
-    if (!db) return { success: false, message: "No database connection" };
-
-    try {
-        const cleanRollNo = updates.rollNo.trim();
-        
-        // Check uniqueness if rollNo changed
-        const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
-        const snapshot = await getDocs(q);
-        // If we find a doc with this rollNo, and its ID is NOT the current userId, it's a duplicate
-        const duplicate = snapshot.docs.find(d => d.id !== userId);
-        
-        if (duplicate) {
-            return { success: false, message: 'Roll Number already taken by another student.' };
-        }
-
-        const dataToUpdate: any = {
-            name: updates.name.trim(),
-            rollNo: cleanRollNo
-        };
-        
-        if (updates.password && updates.password.trim()) {
-            dataToUpdate.password = updates.password.trim();
-        }
-
-        await updateDoc(doc(db, "users", userId), dataToUpdate);
-        return { success: true, message: 'Student updated successfully' };
-    } catch (e) {
-        return { success: false, message: 'Update failed.' };
-    }
-};
-
-export const deleteUser = async (userId: string): Promise<void> => {
-  if (!db) return;
-  await deleteDoc(doc(db, "users", userId));
-};
-
-export const loginUser = async (rollNo: string, password: string): Promise<{ success: boolean; user?: User; message: string }> => {
-  if (!db) return { success: false, message: "No database connection" };
+  if (!isOnline()) return { success: false, message: "Internet connection required to login." };
 
   try {
-    const cleanRollNo = rollNo.trim();
-    const cleanPass = password.trim();
+    const q = query(collection(db, "users"), where("rollNo", "==", rollNo));
+    const querySnapshot = await getDocs(q);
 
-    // --- AUTO-ADMIN CREATION LOGIC ---
-    if (cleanRollNo === 'admin' && cleanPass === 'admin123') {
-        const adminQ = query(collection(db, "users"), where("rollNo", "==", "admin"));
-        const adminSnap = await getDocs(adminQ);
-        if (adminSnap.empty) {
-            // Auto-create Admin if it doesn't exist
-            const newAdmin: User = {
-                id: 'admin_master',
-                name: 'Master Admin',
-                rollNo: 'admin',
-                password: 'admin123',
-                role: 'admin',
-                status: 'active'
-            };
-            if (isOnline()) {
-               await setDoc(doc(db, "users", 'admin_master'), newAdmin);
-               return { success: true, user: newAdmin, message: 'Default Admin account created & logged in.' };
-            }
-        }
-    }
-    // ---------------------------------
-
-    // 1. Find user by Roll No first
-    const q = query(collection(db, "users"), where("rollNo", "==", cleanRollNo));
-    const snapshot = await getDocs(q);
-    
-    // Check if we got data from cache and it's empty, might be out of sync
-    const fromCache = snapshot.metadata.fromCache;
-    
-    if (snapshot.empty) {
-        if (fromCache && !isOnline()) {
-             return { success: false, message: 'User not found locally. Connect to internet to sync.' };
-        }
-        return { success: false, message: 'User not found. Please register first.' };
-    }
-    
-    // 2. Check password in memory
-    const userDoc = snapshot.docs.find(d => d.data().password === cleanPass);
-
-    if (!userDoc) {
-        return { success: false, message: 'Incorrect password.' };
+    if (querySnapshot.empty) {
+      return { success: false, message: "User not found." };
     }
 
+    const userDoc = querySnapshot.docs[0];
     const user = userDoc.data() as User;
-    if (user.status === 'rejected') return { success: false, message: 'Account access denied by admin.' };
-    if (user.status === 'pending') return { success: false, message: 'Account pending approval by admin.' };
+
+    if (user.password !== password) {
+      return { success: false, message: "Incorrect password." };
+    }
     
-    return { success: true, user, message: 'Login successful' };
-  } catch (error) {
-    console.error("Login Error:", error);
-    return { success: false, message: 'Login failed. Please check internet connection.' };
+    if (user.status === 'pending') {
+        return { success: false, message: "Account pending approval from Faculty." };
+    }
+
+    if (user.status === 'rejected') {
+        return { success: false, message: "Account access has been revoked." };
+    }
+
+    return { success: true, message: "Login successful", user };
+  } catch (error: any) {
+    return { success: false, message: "Login failed. Check connection." };
   }
 };
 
 export const updateUserStatus = async (userId: string, status: UserStatus): Promise<void> => {
-  if (!db) return;
-  await updateDoc(doc(db, "users", userId), { status });
+    if (!db) return;
+    await updateDoc(doc(db, "users", userId), { status });
 };
 
-export const updateUserProfile = async (userId: string, updates: { name?: string; password?: string }): Promise<{ success: boolean; user?: User; message: string }> => {
-  if (!db) return { success: false, message: "No database connection" };
-  
-  try {
-      const cleanUpdates: any = {};
-      if (updates.name) cleanUpdates.name = updates.name.trim();
-      if (updates.password) cleanUpdates.password = updates.password.trim();
-
-      await updateDoc(doc(db, "users", userId), cleanUpdates);
-      const updatedUser = (await getDoc(doc(db, "users", userId))).data() as User;
-      return { success: true, user: updatedUser, message: 'Profile updated globally' };
-  } catch (e) {
-      return { success: false, message: 'Update failed' };
-  }
+export const deleteUser = async (userId: string): Promise<void> => {
+    if(!db) return;
+    await deleteDoc(doc(db, "users", userId));
 };
 
-// --- ANNOUNCEMENT SERVICES ---
+export const updateUserProfile = async (userId: string, data: { name: string, password?: string }): Promise<{success: boolean, message: string, user?: User}> => {
+    if (!db) return { success: false, message: "No database connection" };
+    try {
+        const updateData: any = { name: data.name };
+        if (data.password) updateData.password = data.password;
+        
+        const userRef = doc(db, "users", userId);
+        await updateDoc(userRef, updateData);
+        
+        const updatedSnap = await getDoc(userRef);
+        return { success: true, message: "Profile Updated", user: updatedSnap.data() as User };
+    } catch (e) {
+        return { success: false, message: "Failed to update profile" };
+    }
+};
 
-export const subscribeToAnnouncements = (callback: (announcements: Announcement[]) => void): () => void => {
+export const adminAddUser = async (data: {name: string, rollNo: string, password: string}): Promise<{success: boolean, message: string}> => {
+    if (!db) return { success: false, message: "No database connection" };
+    try {
+        const id = crypto.randomUUID();
+        // Check duplicate
+        const q = query(collection(db, "users"), where("rollNo", "==", data.rollNo));
+        const snap = await getDocs(q);
+        if (!snap.empty) return { success: false, message: "Roll No already exists" };
+
+        const newUser: User = {
+            id,
+            name: data.name,
+            rollNo: data.rollNo,
+            password: data.password,
+            role: 'student',
+            status: 'active'
+        };
+        await setDoc(doc(db, "users", id), newUser);
+        return { success: true, message: "User added" };
+    } catch (e) {
+        return { success: false, message: "Failed to add user" };
+    }
+};
+
+export const adminUpdateUser = async (id: string, data: {name: string, rollNo: string, password?: string}): Promise<{success: boolean, message: string}> => {
+    if (!db) return { success: false, message: "No database connection" };
+    try {
+        const updateData: any = { name: data.name, rollNo: data.rollNo };
+        if (data.password) updateData.password = data.password;
+        await updateDoc(doc(db, "users", id), updateData);
+        return { success: true, message: "User updated" };
+    } catch (e) {
+        return { success: false, message: "Failed to update user" };
+    }
+};
+
+// --- LECTURE SERVICES ---
+
+export const subscribeToLectures = (callback: (lectures: Lecture[]) => void): () => void => {
   if (!db) return () => {};
-  const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
+  const q = query(collection(db, "lectures")); // removed orderBy to fix index issues, sort client side
   return onSnapshot(q, (snapshot) => {
-    const announcements: Announcement[] = [];
-    snapshot.forEach(d => announcements.push(d.data() as Announcement));
-    callback(announcements);
+    const lectures: Lecture[] = [];
+    snapshot.forEach(d => lectures.push(d.data() as Lecture));
+    callback(lectures);
   });
 };
 
-export const addAnnouncement = async (
-  message: string, 
-  audience: string, 
-  audienceName: string, 
-  adminName: string
-): Promise<{ success: boolean; message: string }> => {
-  if (!db) return { success: false, message: "Database disconnected" };
+export const addLecture = async (lectureData: any): Promise<void> => {
+  if (!db) throw new Error("No database connection");
+  if (!isOnline()) throw new Error("Internet required for upload.");
+
+  const id = crypto.randomUUID();
   
-  try {
-      const newAnnouncement: Announcement = {
-          id: crypto.randomUUID(),
-          message,
-          audience, // 'all' or student ID
-          audienceName,
-          createdBy: adminName,
-          timestamp: Date.now(),
-          date: new Date().toISOString().split('T')[0],
-          readBy: [] // Initialize empty read array
-      };
-      await setDoc(doc(db, "announcements", newAnnouncement.id), newAnnouncement);
-      return { success: true, message: 'Announcement posted' };
-  } catch (e) {
-      console.error(e);
-      return { success: false, message: 'Failed to post announcement' };
+  // Upload files to Cloudinary first
+  let attachments: Attachment[] = [];
+  
+  if (lectureData.rawFiles && lectureData.rawFiles.length > 0) {
+      // Parallel uploads for speed
+      attachments = await Promise.all(lectureData.rawFiles.map(async (file: any) => {
+          const url = await uploadToCloudinary(file.data, file.name, file.type);
+          return {
+              id: crypto.randomUUID(),
+              url,
+              name: file.name,
+              type: file.type.startsWith('image/') ? 'image' : 'file',
+              mimeType: file.type
+          };
+      }));
   }
+
+  const { rawFiles, ...lectureFields } = lectureData;
+
+  const newLecture: Lecture = {
+    id,
+    ...lectureFields,
+    attachments,
+    likes: [], // Initialize likes
+    likedBy: [] // Initialize likers list
+  };
+
+  await setDoc(doc(db, "lectures", id), newLecture);
 };
 
-export const markAnnouncementAsRead = async (announcementId: string, studentId: string): Promise<void> => {
+export const updateLectureStatus = async (id: string, status: LectureStatus, remark?: string): Promise<void> => {
+  if (!db) return;
+  const data: any = { status };
+  if (remark) data.adminRemark = remark;
+  await updateDoc(doc(db, "lectures", id), data);
+};
+
+export const deleteLecture = async (id: string): Promise<void> => {
     if (!db) return;
+    await deleteDoc(doc(db, "lectures", id));
+};
+
+export const toggleLikeLecture = async (lectureId: string, user: { id: string, name: string }): Promise<void> => {
+    if (!db) return;
+    const lectureRef = doc(db, "lectures", lectureId);
+
     try {
-        const announcementRef = doc(db, "announcements", announcementId);
-        await updateDoc(announcementRef, {
-            readBy: arrayUnion(studentId)
+        await runTransaction(db, async (transaction) => {
+            const lectureDoc = await transaction.get(lectureRef);
+            if (!lectureDoc.exists()) throw "Lecture does not exist!";
+
+            const lectureData = lectureDoc.data() as Lecture;
+            const likes = lectureData.likes || [];
+            const likedBy = lectureData.likedBy || [];
+
+            if (likes.includes(user.id)) {
+                // Unlike
+                const newLikes = likes.filter(id => id !== user.id);
+                const newLikedBy = likedBy.filter(liker => liker.id !== user.id);
+                transaction.update(lectureRef, { likes: newLikes, likedBy: newLikedBy });
+            } else {
+                // Like
+                const newLikes = [...likes, user.id];
+                const newLikedBy = [...likedBy, { id: user.id, name: user.name }];
+                transaction.update(lectureRef, { likes: newLikes, likedBy: newLikedBy });
+            }
         });
     } catch (e) {
-        console.error("Failed to mark announcement as read", e);
+        console.error("Like toggle failed", e);
     }
+};
+
+
+// --- ANNOUNCEMENT SERVICES ---
+
+export const subscribeToAnnouncements = (callback: (list: Announcement[]) => void): () => void => {
+    if (!db) return () => {};
+    const q = query(collection(db, "announcements"));
+    return onSnapshot(q, (snapshot) => {
+        const list: Announcement[] = [];
+        snapshot.forEach(d => list.push(d.data() as Announcement));
+        // Client side sort by timestamp desc
+        list.sort((a, b) => b.timestamp - a.timestamp);
+        callback(list);
+    });
+};
+
+export const addAnnouncement = async (message: string, audience: string, audienceName: string, createdBy: string): Promise<{success: boolean}> => {
+    if (!db) return { success: false };
+    try {
+        const id = crypto.randomUUID();
+        const ann: Announcement = {
+            id,
+            message,
+            audience,
+            audienceName,
+            createdBy,
+            timestamp: Date.now(),
+            date: new Date().toISOString().split('T')[0],
+            readBy: []
+        };
+        await setDoc(doc(db, "announcements", id), ann);
+        return { success: true };
+    } catch (e) {
+        console.error(e);
+        return { success: false };
+    }
+};
+
+export const deleteAnnouncement = async (id: string): Promise<void> => {
+    if (!db) return;
+    await deleteDoc(doc(db, "announcements", id));
 };
 
 export const updateAnnouncement = async (id: string, message: string): Promise<void> => {
@@ -482,101 +480,14 @@ export const updateAnnouncement = async (id: string, message: string): Promise<v
     await updateDoc(doc(db, "announcements", id), { message });
 };
 
-export const deleteAnnouncement = async (id: string): Promise<void> => {
-    if(!db) return;
-    await deleteDoc(doc(db, "announcements", id));
+export const markAnnouncementAsRead = async (announcementId: string, studentId: string): Promise<void> => {
+    if (!db) return;
+    try {
+        const ref = doc(db, "announcements", announcementId);
+        await updateDoc(ref, {
+            readBy: arrayUnion(studentId)
+        });
+    } catch (e) {
+        // ignore errors
+    }
 };
-
-// --- LECTURE SERVICES (GLOBAL SYNC) ---
-
-export const subscribeToLectures = (callback: (lectures: Lecture[]) => void): () => void => {
-  if (!db) return () => {};
-  
-  const q = query(collection(db, "lectures"), orderBy("timestamp", "desc"));
-  return onSnapshot(q, (snapshot) => {
-    const lectures: Lecture[] = [];
-    snapshot.forEach(d => {
-        const data = d.data() as Lecture;
-        // Fix for backward compatibility with old single-image lectures
-        if (!data.attachments && data.imageURL) {
-            data.attachments = [{
-                id: 'legacy_img',
-                url: data.imageURL,
-                type: 'image',
-                name: 'Lecture Image',
-                mimeType: 'image/jpeg'
-            }];
-        } else if (!data.attachments) {
-            data.attachments = [];
-        }
-        lectures.push(data);
-    });
-    callback(lectures);
-  });
-};
-
-export const addLecture = async (lectureData: Partial<Lecture> & { rawFiles?: { data: string, name: string, type: string }[] }): Promise<void> => {
-  if (!db) throw new Error("No database connection");
-
-  // 1. Upload Files to Cloudinary (Global Storage)
-  const uploadedAttachments: Attachment[] = [];
-  
-  if (lectureData.rawFiles && lectureData.rawFiles.length > 0) {
-      // Upload sequentially to avoid overwhelming browser/connection
-      for (const file of lectureData.rawFiles) {
-          try {
-              const secureUrl = await uploadToCloudinary(file.data, file.name, file.type);
-              uploadedAttachments.push({
-                  id: crypto.randomUUID(),
-                  url: secureUrl,
-                  name: file.name,
-                  type: file.type.startsWith('image/') ? 'image' : 'file',
-                  mimeType: file.type
-              });
-          } catch (error: any) {
-              console.error("Cloudinary Upload Failed:", error);
-              throw new Error(`File upload failed for ${file.name}: ${error.message}`);
-          }
-      }
-  }
-
-  // 2. Prepare Metadata
-  const newLecture: Lecture = {
-      id: lectureData.id || crypto.randomUUID(),
-      studentId: lectureData.studentId!,
-      studentName: lectureData.studentName!,
-      rollNo: lectureData.rollNo!,
-      subject: lectureData.subject!,
-      topic: lectureData.topic!,
-      description: lectureData.description || '',
-      date: lectureData.date!,
-      timestamp: lectureData.timestamp!,
-      status: lectureData.status!,
-      adminRemark: '',
-      attachments: uploadedAttachments,
-      imageURL: uploadedAttachments.find(a => a.type === 'image')?.url || '' // Set first image as cover for legacy
-  };
-
-  // 3. Save to Firestore
-  try {
-      await setDoc(doc(db, "lectures", newLecture.id), newLecture);
-  } catch (error: any) {
-      if (error.code === 'permission-denied') {
-          throw new Error("You do not have permission to upload. Check Database Rules.");
-      }
-      throw error;
-  }
-};
-
-export const updateLectureStatus = async (id: string, status: LectureStatus, remark?: string): Promise<void> => {
-  if (!db) return;
-  await updateDoc(doc(db, "lectures", id), { status, adminRemark: remark || "" });
-};
-
-export const deleteLecture = async (id: string): Promise<void> => {
-  if (!db) return;
-  await deleteDoc(doc(db, "lectures", id));
-};
-
-// Export connection status helper
-export const checkConnection = isOnline;
