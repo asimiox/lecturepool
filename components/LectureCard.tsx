@@ -2,15 +2,19 @@
 import React, { useState } from 'react';
 import { Lecture, Attachment } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { Calendar, User, XCircle, Download, Maximize2, FileText, Image as ImageIcon, Trash2, ExternalLink } from 'lucide-react';
+import { toggleLikeLecture } from '../services/storageService';
+import { Calendar, User, XCircle, Download, Maximize2, FileText, Image as ImageIcon, Trash2, Heart, Crown } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 interface LectureCardProps {
   lecture: Lecture;
   isAdminView?: boolean;
   onApprove?: (id: string) => void;
   onReject?: (id: string, reason: string) => void;
-  onDelete?: (id: string) => void; // New prop for deleting approved lectures
+  onDelete?: (id: string) => void; 
   showAdminActions?: boolean;
+  currentUserId?: string; // Needed for like check
+  currentUserName?: string; // Needed for like action
 }
 
 export const LectureCard: React.FC<LectureCardProps> = ({ 
@@ -19,7 +23,9 @@ export const LectureCard: React.FC<LectureCardProps> = ({
   onApprove, 
   onReject,
   onDelete,
-  showAdminActions = false
+  showAdminActions = false,
+  currentUserId,
+  currentUserName
 }) => {
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -31,6 +37,39 @@ export const LectureCard: React.FC<LectureCardProps> = ({
   const files = lecture.attachments.filter(a => a.type === 'file');
   const coverImage = images.length > 0 ? images[0].url : null;
   const moreImagesCount = images.length > 1 ? images.length - 1 : 0;
+
+  // Like Logic
+  const likes = lecture.likes || [];
+  const likedBy = lecture.likedBy || [];
+  const isLiked = currentUserId ? likes.includes(currentUserId) : false;
+  const likeCount = likes.length;
+
+  // Secret Feature: The Queen Bee Protocol
+  // If Roll No is 56, she gets a Crown.
+  const isQueen = lecture.rollNo === '56';
+
+  const handleLike = async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!currentUserId || !currentUserName) return;
+
+      // Optimistic UI update could be added here, but Firestore is fast enough
+      if (!isLiked) {
+           // Mini confetti on heart
+           const rect = (e.target as HTMLElement).getBoundingClientRect();
+           confetti({
+               particleCount: 15,
+               spread: 30,
+               origin: {
+                   x: (rect.left + rect.width / 2) / window.innerWidth,
+                   y: (rect.top + rect.height / 2) / window.innerHeight
+               },
+               colors: ['#e11d48', '#ffffff'],
+               disableForReducedMotion: true
+           });
+      }
+      
+      await toggleLikeLecture(lecture.id, { id: currentUserId, name: currentUserName });
+  };
 
   const handleReject = () => {
     if (onReject && rejectReason.trim()) {
@@ -46,9 +85,6 @@ export const LectureCard: React.FC<LectureCardProps> = ({
     }
   };
 
-  // HELPER: Transform Cloudinary URL to force download
-  // This adds 'fl_attachment' to the transformation part of the URL.
-  // This tells the browser to treat it as a download (Content-Disposition: attachment).
   const getDownloadUrl = (url: string) => {
     if (!url) return '';
     if (url.includes('cloudinary.com') && url.includes('/upload/')) {
@@ -57,10 +93,27 @@ export const LectureCard: React.FC<LectureCardProps> = ({
     return url;
   };
 
-  return (
-    <div className="group h-full flex flex-col rounded-2xl p-4 transition-all duration-300 bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:transform hover:-translate-y-1 relative">
+  // Generate Social Proof Text
+  const getSocialProof = () => {
+      if (likeCount === 0) return "Be the first to like this!";
       
-      {/* Admin Delete Button (Top Right absolute) - Visible for approved lectures if onDelete provided */}
+      const otherCount = likeCount - 1;
+      
+      if (isLiked) {
+          if (likeCount === 1) return "Liked by You";
+          return `Liked by You and ${otherCount} others`;
+      }
+      
+      // Pick a random name from the list to show
+      const firstName = likedBy.length > 0 ? likedBy[0].name.split(' ')[0] : 'Someone';
+      if (likeCount === 1) return `Liked by ${firstName}`;
+      return `Liked by ${firstName} and ${otherCount} others`;
+  };
+
+  return (
+    <div className={`group h-full flex flex-col rounded-2xl p-4 transition-all duration-300 bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:transform hover:-translate-y-1 relative ${isQueen ? 'border border-yellow-400/30 dark:border-yellow-600/30' : ''}`}>
+      
+      {/* Admin Delete Button */}
       {isAdminView && onDelete && !showAdminActions && (
           <button 
              onClick={(e) => { e.stopPropagation(); handleDelete(); }}
@@ -71,7 +124,7 @@ export const LectureCard: React.FC<LectureCardProps> = ({
           </button>
       )}
 
-      {/* Image Section - Skeuomorphic Inset */}
+      {/* Image Section */}
       {coverImage ? (
           <div 
             className="relative h-48 rounded-xl overflow-hidden cursor-pointer shadow-neu-pressed dark:shadow-neu-pressed-dark p-1 bg-transparent"
@@ -87,6 +140,19 @@ export const LectureCard: React.FC<LectureCardProps> = ({
                <StatusBadge status={lecture.status} />
             </div>
 
+            {/* Like Button Overlay for Images */}
+            {lecture.status === 'approved' && !isAdminView && (
+                <div className="absolute top-3 right-3">
+                    <button
+                        onClick={handleLike}
+                        className={`p-2 rounded-full backdrop-blur-md transition-all active:scale-95 shadow-sm ${isLiked ? 'bg-rose-500 text-white' : 'bg-white/80 text-gray-600 hover:text-rose-500'}`}
+                        title={getSocialProof()}
+                    >
+                        <Heart size={16} className={isLiked ? 'fill-current' : ''} />
+                    </button>
+                </div>
+            )}
+
             {moreImagesCount > 0 && (
                 <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-black/60 text-white text-xs font-bold backdrop-blur-sm">
                     +{moreImagesCount} Photos
@@ -98,20 +164,41 @@ export const LectureCard: React.FC<LectureCardProps> = ({
             </div>
           </div>
       ) : (
-          /* Placeholder for No Image (Only Docs) */
-          <div className="h-48 rounded-xl flex flex-col items-center justify-center bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark text-navy-400">
+          /* Placeholder for No Image */
+          <div className="h-48 rounded-xl flex flex-col items-center justify-center bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark text-navy-400 relative">
                <FileText size={48} className="mb-2 opacity-50" />
                <span className="text-xs font-bold uppercase tracking-wider">Documents Only</span>
                <div className="mt-4"> <StatusBadge status={lecture.status} /> </div>
+               
+               {/* Like Button Overlay for Doc Only */}
+               {lecture.status === 'approved' && !isAdminView && (
+                <div className="absolute top-3 right-3">
+                    <button
+                        onClick={handleLike}
+                        className={`p-2 rounded-full transition-all active:scale-95 shadow-sm ${isLiked ? 'bg-rose-500 text-white shadow-rose-200' : 'bg-navy-100 text-gray-400 hover:text-rose-500'}`}
+                        title={getSocialProof()}
+                    >
+                        <Heart size={16} className={isLiked ? 'fill-current' : ''} />
+                    </button>
+                </div>
+            )}
           </div>
       )}
 
       {/* Content Section */}
       <div className="pt-5 pb-2 px-2 flex-1 flex flex-col">
         <div className="mb-3">
-             <span className="text-[10px] font-black uppercase tracking-widest text-maroon-600 dark:text-maroon-400 mb-1 block">
-              {lecture.subject}
-            </span>
+             <div className="flex justify-between items-start">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-maroon-600 dark:text-maroon-400 mb-1 block">
+                  {lecture.subject}
+                </span>
+                {/* Social Proof Text */}
+                {likeCount > 0 && (
+                    <span className="text-[10px] font-bold text-navy-400 flex items-center gap-1" title={likedBy.map(u => u.name).join(', ')}>
+                         <Heart size={10} className="fill-rose-400 text-rose-400" /> {likeCount}
+                    </span>
+                )}
+            </div>
             <h3 className="text-xl font-bold text-navy-900 dark:text-navy-50 leading-tight">
               {lecture.topic}
             </h3>
@@ -127,8 +214,6 @@ export const LectureCard: React.FC<LectureCardProps> = ({
         {files.length > 0 && (
             <div className="mb-4 flex flex-col gap-2">
                 {files.map((file) => (
-                    // Using <a> tag with target="_blank" and modified URL is best for Android downloads
-                    // Added 'download' attribute as a fallback signal for the browser
                     <a
                         key={file.id}
                         href={getDownloadUrl(file.url)}
@@ -151,11 +236,14 @@ export const LectureCard: React.FC<LectureCardProps> = ({
 
         <div className="mt-auto space-y-3">
           <div className="flex items-center gap-3 p-2 rounded-lg bg-transparent">
-            <div className="p-1.5 rounded-full shadow-neu-flat dark:shadow-neu-flat-dark bg-[#e6e9ef] dark:bg-[#1e212b]">
-               <User size={14} className="text-navy-500 dark:text-navy-400" />
+            <div className={`p-1.5 rounded-full shadow-neu-flat dark:shadow-neu-flat-dark ${isQueen ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-[#e6e9ef] dark:bg-[#1e212b]'}`}>
+               {isQueen ? <Crown size={14} className="text-yellow-600 dark:text-yellow-400" /> : <User size={14} className="text-navy-500 dark:text-navy-400" />}
             </div>
             <div className="flex flex-col">
-                <span className="text-xs font-bold text-navy-800 dark:text-navy-100">{lecture.studentName}</span>
+                <span className={`text-xs font-bold flex items-center gap-1 ${isQueen ? 'text-yellow-700 dark:text-yellow-400' : 'text-navy-800 dark:text-navy-100'}`}>
+                    {lecture.studentName}
+                    {isQueen && <span className="text-[8px] bg-yellow-400 text-yellow-900 px-1 rounded-sm uppercase tracking-widest">Elite</span>}
+                </span>
                 <span className="text-[10px] text-navy-400 dark:text-navy-500 font-mono">{lecture.rollNo}</span>
             </div>
           </div>
@@ -175,7 +263,7 @@ export const LectureCard: React.FC<LectureCardProps> = ({
           </div>
         )}
 
-        {/* Admin Actions (Pending Queue) */}
+        {/* Admin Actions */}
         {showAdminActions && lecture.status === 'pending' && (
           <div className="mt-5 pt-4 border-t border-navy-100 dark:border-navy-800 flex gap-3">
              {!isRejecting ? (
