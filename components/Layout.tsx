@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Screen, User } from '../types';
-import { BookOpen, LogOut, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff, Bell, Megaphone } from 'lucide-react';
+import { BookOpen, LogOut, Moon, Sun, User as UserIcon, Settings, Wifi, WifiOff, Menu, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { subscribeToAnnouncements } from '../services/storageService';
 
@@ -55,6 +55,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const [logoClicks, setLogoClicks] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -109,11 +110,23 @@ export const Layout: React.FC<LayoutProps> = ({
   };
 
   const navButtonClass = (screen: Screen) => `
-    px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 relative
+    px-5 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 relative whitespace-nowrap
     ${currentScreen === screen
       ? (isDarkMode ? 'text-maroon-400 shadow-neu-pressed-dark' : 'text-maroon-700 shadow-neu-pressed')
       : (isDarkMode ? 'text-navy-300 hover:text-navy-100 hover:shadow-neu-flat-dark' : 'text-navy-600 hover:text-navy-900 hover:shadow-neu-flat')}
   `;
+  
+  const mobileNavButtonClass = (screen: Screen) => `
+    w-full text-left px-5 py-4 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 relative
+    ${currentScreen === screen
+      ? (isDarkMode ? 'bg-navy-800 text-maroon-400' : 'bg-navy-100 text-maroon-700')
+      : (isDarkMode ? 'text-navy-300' : 'text-navy-600')}
+  `;
+
+  const handleMobileNav = (screen: Screen) => {
+      onNavigate(screen);
+      setIsMobileMenuOpen(false);
+  };
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${isDarkMode ? 'text-navy-50' : 'text-navy-900'}`}>
@@ -121,27 +134,39 @@ export const Layout: React.FC<LayoutProps> = ({
       <header className={`sticky top-0 z-50 transition-colors duration-300 ${isDarkMode ? 'bg-[#1e212b] shadow-neu-flat-dark' : 'bg-[#e6e9ef] shadow-neu-flat'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            {/* Logo */}
-            <div className="flex items-center cursor-pointer group select-none" onClick={handleLogoClick}>
-              <div className={`p-2.5 rounded-xl mr-3 transition-all duration-300 ${
-                isDarkMode 
-                  ? 'bg-navy-900 shadow-neu-flat-dark group-hover:shadow-neu-pressed-dark text-maroon-400' 
-                  : 'bg-navy-50 shadow-neu-flat group-hover:shadow-neu-pressed text-navy-900'
-              }`}>
-                <BookOpen className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className={`text-2xl font-bold tracking-tight ${isDarkMode ? 'text-navy-100' : 'text-navy-900'}`}>
-                  Lecture<span className="text-maroon-600">Pool</span>
-                </h1>
-                <p className={`text-[10px] font-bold tracking-widest uppercase ${isDarkMode ? 'text-navy-400' : 'text-navy-500'}`}>
-                  {isAdmin ? 'Faculty Panel' : 'Student Portal'}
-                </p>
-              </div>
+            
+            {/* Left Side: Logo & Mobile Menu Toggle */}
+            <div className="flex items-center gap-4">
+                {/* Mobile Menu Button */}
+                <button 
+                  className="md:hidden p-2 text-navy-600 dark:text-navy-300"
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                >
+                    {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                </button>
+
+                {/* Logo */}
+                <div className="flex items-center cursor-pointer group select-none" onClick={handleLogoClick}>
+                <div className={`p-2.5 rounded-xl mr-3 transition-all duration-300 ${
+                    isDarkMode 
+                    ? 'bg-navy-900 shadow-neu-flat-dark group-hover:shadow-neu-pressed-dark text-maroon-400' 
+                    : 'bg-navy-50 shadow-neu-flat group-hover:shadow-neu-pressed text-navy-900'
+                }`}>
+                    <BookOpen className="h-6 w-6" />
+                </div>
+                <div>
+                    <h1 className={`text-2xl font-bold tracking-tight ${isDarkMode ? 'text-navy-100' : 'text-navy-900'}`}>
+                    Lecture<span className="text-maroon-600">Pool</span>
+                    </h1>
+                    <p className={`text-[10px] font-bold tracking-widest uppercase hidden sm:block ${isDarkMode ? 'text-navy-400' : 'text-navy-500'}`}>
+                    {isAdmin ? 'Faculty Panel' : 'Student Portal'}
+                    </p>
+                </div>
+                </div>
             </div>
 
-            {/* Navigation & Controls */}
-            <div className="flex items-center space-x-4 md:space-x-6">
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center space-x-4 md:space-x-6">
               
               <button 
                 onClick={toggleTheme}
@@ -154,7 +179,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
               </button>
 
-              <nav className="hidden md:flex space-x-4">
+              <nav className="flex space-x-4">
                 {isAdmin ? (
                   <>
                     <button onClick={() => onNavigate(Screen.HOME)} className={navButtonClass(Screen.HOME)}>
@@ -213,8 +238,73 @@ export const Layout: React.FC<LayoutProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Mobile Right Actions */}
+            <div className="flex md:hidden items-center gap-3">
+                 <button 
+                    onClick={toggleTheme}
+                    className={`p-2.5 rounded-full transition-all duration-300 ${
+                    isDarkMode 
+                        ? 'bg-[#1e212b] shadow-neu-flat-dark text-yellow-400' 
+                        : 'bg-[#e6e9ef] shadow-neu-flat text-navy-600'
+                    }`}
+                >
+                    {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+                 <button 
+                    onClick={onLogout}
+                    className="p-2.5 rounded-full bg-maroon-50 text-maroon-600 dark:bg-maroon-900/30 dark:text-maroon-400"
+                >
+                    <LogOut size={18} />
+                </button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Menu Dropdown */}
+        {isMobileMenuOpen && (
+            <div className="md:hidden border-t border-navy-100 dark:border-navy-800 bg-[#e6e9ef] dark:bg-[#1e212b] animate-slide-down shadow-xl absolute w-full z-40">
+                <div className="px-4 py-6 space-y-3">
+                    {isAdmin ? (
+                        <>
+                            <button onClick={() => handleMobileNav(Screen.HOME)} className={mobileNavButtonClass(Screen.HOME)}>
+                                Dashboard
+                            </button>
+                            <button onClick={() => handleMobileNav(Screen.LIBRARY)} className={mobileNavButtonClass(Screen.LIBRARY)}>
+                                All Uploads
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={() => handleMobileNav(Screen.HOME)} className={mobileNavButtonClass(Screen.HOME)}>
+                                Today's Lectures
+                            </button>
+                            <button onClick={() => handleMobileNav(Screen.MY_UPLOADS)} className={mobileNavButtonClass(Screen.MY_UPLOADS)}>
+                                My Uploads
+                            </button>
+                            <button onClick={() => handleMobileNav(Screen.LIBRARY)} className={mobileNavButtonClass(Screen.LIBRARY)}>
+                                Archive
+                            </button>
+                            <button onClick={() => handleMobileNav(Screen.ANNOUNCEMENTS)} className={mobileNavButtonClass(Screen.ANNOUNCEMENTS)}>
+                                <div className="flex justify-between items-center">
+                                    <span>Announcements</span>
+                                    {unreadAnnouncements > 0 && (
+                                        <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold">
+                                            {unreadAnnouncements} New
+                                        </span>
+                                    )}
+                                </div>
+                            </button>
+                        </>
+                    )}
+                    <div className="pt-4 border-t border-navy-200 dark:border-navy-700">
+                         <button onClick={() => handleMobileNav(Screen.PROFILE)} className="flex items-center gap-2 w-full px-5 py-3 text-sm font-bold text-navy-600 dark:text-navy-300">
+                             <Settings size={18} /> Profile Settings
+                         </button>
+                    </div>
+                </div>
+            </div>
+        )}
       </header>
 
       {/* Main Content */}
