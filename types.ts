@@ -20,6 +20,11 @@ export interface Attachment {
   mimeType: string;
 }
 
+export interface Liker {
+  id: string;
+  name: string;
+}
+
 export interface Lecture {
   id: string;
   studentId: string; // Link to user
@@ -34,6 +39,8 @@ export interface Lecture {
   timestamp: number; // For sorting
   status: LectureStatus;
   adminRemark?: string;
+  likes: string[]; // Array of user IDs
+  likedBy?: Liker[]; // Array of objects for display names
 }
 
 export interface Announcement {

@@ -138,7 +138,7 @@ const App: React.FC = () => {
       case Screen.MY_UPLOADS:
         return <StudentDashboardScreen onNavigate={setCurrentScreen} currentUser={currentUser} />;
       case Screen.LIBRARY:
-        return <ApprovedLecturesScreen />;
+        return <ApprovedLecturesScreen currentUser={currentUser} />;
       case Screen.PROFILE:
         return <ProfileScreen currentUser={currentUser} onUserUpdate={handleUserUpdate} onNavigate={setCurrentScreen} />;
       case Screen.ANNOUNCEMENTS:
