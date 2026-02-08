@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Announcement } from '../types';
-import { subscribeToAnnouncements } from '../services/storageService';
-import { Megaphone, Calendar, Clock } from 'lucide-react';
+import { subscribeToAnnouncements, markAnnouncementAsRead } from '../services/storageService';
+import { Megaphone, Calendar, Clock, CheckCheck } from 'lucide-react';
 
 interface AnnouncementsScreenProps {
   currentUser: User;
@@ -16,6 +16,14 @@ export const AnnouncementsScreen: React.FC<AnnouncementsScreenProps> = ({ curren
         // Filter: Show only if audience is 'all' OR matches current user ID
         const relevant = list.filter(a => a.audience === 'all' || a.audience === currentUser.id);
         setAnnouncements(relevant);
+
+        // Mark unread ones as read
+        relevant.forEach(ann => {
+             const readBy = ann.readBy || []; // Handle legacy data without readBy
+             if (!readBy.includes(currentUser.id)) {
+                 markAnnouncementAsRead(ann.id, currentUser.id);
+             }
+        });
     });
     return () => unsub();
   }, [currentUser]);
@@ -38,6 +46,7 @@ export const AnnouncementsScreen: React.FC<AnnouncementsScreenProps> = ({ curren
            <div className="grid gap-6">
                {announcements.map((ann) => {
                    const isToday = ann.date === new Date().toISOString().split('T')[0];
+                   const isRead = (ann.readBy || []).includes(currentUser.id);
                    return (
                        <div key={ann.id} className={`p-6 rounded-3xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark border-l-8 ${isToday ? 'border-maroon-500' : 'border-navy-500'} relative overflow-hidden group`}>
                            <div className="flex justify-between items-start mb-3 relative z-10">
@@ -49,7 +58,14 @@ export const AnnouncementsScreen: React.FC<AnnouncementsScreenProps> = ({ curren
                                         <Calendar size={12} /> {ann.date}
                                     </span>
                                </div>
-                               <span className="text-[10px] text-navy-300 font-mono">ID: {ann.id.slice(0,6)}</span>
+                               <div className="flex flex-col items-end">
+                                   <span className="text-[10px] text-navy-300 font-mono">ID: {ann.id.slice(0,6)}</span>
+                                   {isRead && (
+                                       <span className="flex items-center gap-1 text-[10px] text-green-600 font-bold mt-1">
+                                           <CheckCheck size={12} /> Seen
+                                       </span>
+                                   )}
+                               </div>
                            </div>
                            
                            <p className="text-lg font-medium text-navy-900 dark:text-navy-50 whitespace-pre-wrap relative z-10">
