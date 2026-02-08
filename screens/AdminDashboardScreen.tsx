@@ -21,7 +21,7 @@ import {
     updateAnnouncement
 } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
-import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader, User as UserIcon, Lock, Bell, Megaphone, Send, Eye, CheckCheck } from 'lucide-react';
+import { BarChart2, CheckCircle, Clock, Users, Layers, Search, UserPlus, XCircle, Check, Book, Plus, Edit2, Trash2, Save, X, RotateCcw, Loader, Bell, Megaphone, Send, Eye, CheckCheck } from 'lucide-react';
 
 type AdminTab = 'queue' | 'all_lectures' | 'students' | 'subjects' | 'announcements';
 
@@ -42,7 +42,9 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
   const [targetAudience, setTargetAudience] = useState('all');
   const [isPosting, setIsPosting] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
-  const [viewingStatsFor, setViewingStatsFor] = useState<Announcement | null>(null);
+  
+  // Holds the ID of the announcement currently being viewed in stats
+  const [viewingStatsId, setViewingStatsId] = useState<string | null>(null);
 
   // Student Management State
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
@@ -143,6 +145,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
 
   const handleDeleteAnnouncement = async (id: string) => {
       if(window.confirm("Delete this announcement?")) {
+          if (viewingStatsId === id) setViewingStatsId(null);
           await deleteAnnouncement(id);
           showNotification?.("Announcement Deleted", 'success');
       }
@@ -281,6 +284,9 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
           showNotification?.("Subjects Reset", 'success');
       }
   };
+
+  // Helper to find current stats object based on ID
+  const viewingStatsFor = viewingStatsId ? announcements.find(a => a.id === viewingStatsId) : null;
 
   // Stats calculation
   const totalUploads = lectures.length;
@@ -460,7 +466,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
            </>
         )}
 
-        {/* ... (Existing code for other tabs omitted for brevity, keeping only changed sections or context) ... */}
         {activeTab === 'all_lectures' && (
           <>
             <div className="flex justify-between items-center mb-6">
@@ -505,9 +510,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
           </>
         )}
         
-        {/* ... (Student and Subject tabs code logic remains same, skipping for brevity in output) ... */}
         {activeTab === 'students' && (
-           // Reuse existing student tab code
            <>
             {pendingUsers.length > 0 && (
                 <div className="mb-10">
@@ -550,7 +553,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
                     <button onClick={handleOpenAddStudent} className="px-4 py-2.5 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 flex items-center gap-2"><Plus size={16} /> <span className="hidden sm:inline">Add Student</span></button>
                 </div>
             </div>
-            {/* Student Table implementation */}
             <div className="overflow-hidden rounded-3xl shadow-neu-flat dark:shadow-neu-flat-dark">
                     <table className="min-w-full bg-[#e6e9ef] dark:bg-[#1e212b]">
                         <thead className="bg-navy-100 dark:bg-navy-900">
@@ -582,7 +584,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
         )}
 
         {activeTab === 'subjects' && (
-           // Reuse existing subject tab code
            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div>
                      <div className="flex items-center justify-between mb-6">
@@ -645,7 +646,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
                                         </span>
                                         <div className="flex items-center gap-2">
                                              <button 
-                                                onClick={() => setViewingStatsFor(ann)}
+                                                onClick={() => setViewingStatsId(ann.id)}
                                                 className="flex items-center gap-1 text-[10px] font-bold bg-navy-200 dark:bg-navy-700 text-navy-800 dark:text-navy-100 px-2 py-0.5 rounded-full hover:bg-navy-300 transition-colors"
                                              >
                                                  <Eye size={12} />
@@ -740,11 +741,11 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
 
       {/* Stats Modal */}
       {viewingStatsFor && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm" onClick={() => setViewingStatsFor(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm" onClick={() => setViewingStatsId(null)}>
               <div className="bg-[#e6e9ef] dark:bg-[#1e212b] rounded-3xl shadow-neu-flat dark:shadow-neu-flat-dark w-full max-w-2xl p-6 relative max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                   <div className="flex justify-between items-start mb-4">
                       <h3 className="text-xl font-black text-navy-900 dark:text-navy-50">Read Status</h3>
-                      <button onClick={() => setViewingStatsFor(null)} className="p-1 rounded-full hover:bg-navy-200 dark:hover:bg-navy-700"><X size={20} /></button>
+                      <button onClick={() => setViewingStatsId(null)} className="p-1 rounded-full hover:bg-navy-200 dark:hover:bg-navy-700"><X size={20} /></button>
                   </div>
                   
                   <div className="text-sm text-navy-600 dark:text-navy-300 mb-4 p-3 bg-navy-100 dark:bg-navy-800 rounded-xl">
@@ -798,27 +799,53 @@ export const AdminDashboardScreen: React.FC<AdminDashboardProps> = ({ showNotifi
           </div>
       )}
 
-      {/* Student Modal (Existing) */}
+      {/* Student Modal */}
       {isStudentModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm">
-              <div className="bg-[#e6e9ef] dark:bg-[#1e212b] rounded-3xl shadow-neu-flat dark:shadow-neu-flat-dark w-full max-w-md p-6 relative">
-                  <button onClick={() => setIsStudentModalOpen(false)} className="absolute top-4 right-4 text-navy-400 hover:text-navy-600 dark:hover:text-navy-200 transition-colors"><X size={20} /></button>
-                  <h3 className="text-xl font-black text-navy-900 dark:text-navy-50 mb-6">{editingStudent ? 'Edit Student' : 'Add New Student'}</h3>
+              <div className="bg-[#e6e9ef] dark:bg-[#1e212b] rounded-3xl shadow-neu-flat dark:shadow-neu-flat-dark w-full max-w-md p-8 relative">
+                  <div className="flex justify-between items-start mb-6">
+                      <h3 className="text-xl font-black text-navy-900 dark:text-navy-50">{editingStudent ? 'Edit Student' : 'Add New Student'}</h3>
+                      <button onClick={() => setIsStudentModalOpen(false)} className="p-1 rounded-full hover:bg-navy-200 dark:hover:bg-navy-700"><X size={20} /></button>
+                  </div>
+                  
                   <form onSubmit={handleStudentFormSubmit} className="space-y-4">
-                      <div>
-                          <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Full Name</label>
-                          <input type="text" value={studentForm.name} onChange={(e) => setStudentForm({...studentForm, name: e.target.value})} className={inputClass} placeholder="e.g. John Doe" />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Roll Number</label>
-                          <input type="text" value={studentForm.rollNo} onChange={(e) => setStudentForm({...studentForm, rollNo: e.target.value})} className={inputClass} placeholder="e.g. 12345" />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">{editingStudent ? 'New Password (Optional)' : 'Password'}</label>
-                          <input type="text" value={studentForm.password} onChange={(e) => setStudentForm({...studentForm, password: e.target.value})} className={inputClass} placeholder={editingStudent ? "Leave blank to keep current" : "••••••••"} />
-                      </div>
-                      {studentFormMsg && <div className="p-3 rounded-xl bg-maroon-50 dark:bg-maroon-900/20 text-maroon-600 dark:text-maroon-300 text-xs font-bold text-center border border-maroon-100 dark:border-maroon-800">{studentFormMsg}</div>}
-                      <button type="submit" disabled={isProcessingStudent} className="w-full mt-2 py-3 rounded-xl bg-navy-600 text-white font-bold text-sm shadow-neu-flat dark:shadow-none hover:bg-navy-700 transition-all flex items-center justify-center gap-2 disabled:opacity-70">{isProcessingStudent ? <Loader size={16} className="animate-spin" /> : <Save size={16} />} {editingStudent ? 'Save Changes' : 'Create Student'}</button>
+                       <div>
+                           <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Full Name</label>
+                           <input 
+                              type="text" 
+                              value={studentForm.name} 
+                              onChange={(e) => setStudentForm({...studentForm, name: e.target.value})}
+                              className={inputClass}
+                           />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Roll Number</label>
+                           <input 
+                              type="text" 
+                              value={studentForm.rollNo} 
+                              onChange={(e) => setStudentForm({...studentForm, rollNo: e.target.value})}
+                              className={inputClass}
+                              disabled={!!editingStudent} // Cannot change ID
+                           />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-navy-600 dark:text-navy-400 uppercase tracking-wider mb-2 ml-1">Password {editingStudent && '(Leave blank to keep current)'}</label>
+                           <input 
+                              type="password" 
+                              value={studentForm.password} 
+                              onChange={(e) => setStudentForm({...studentForm, password: e.target.value})}
+                              className={inputClass}
+                           />
+                       </div>
+
+                       {studentFormMsg && (
+                          <div className="text-xs font-bold text-maroon-600 text-center p-2 bg-maroon-50 rounded-lg">{studentFormMsg}</div>
+                       )}
+
+                       <div className="flex gap-4 pt-2">
+                           <button type="button" onClick={() => setIsStudentModalOpen(false)} className="flex-1 py-3 rounded-xl bg-navy-200 dark:bg-navy-800 text-navy-700 dark:text-navy-200 font-bold text-sm">Cancel</button>
+                           <button type="submit" disabled={isProcessingStudent} className="flex-1 py-3 rounded-xl bg-navy-600 text-white font-bold text-sm hover:bg-navy-700 shadow-neu-flat dark:shadow-none">{isProcessingStudent ? 'Saving...' : 'Save Student'}</button>
+                       </div>
                   </form>
               </div>
           </div>

@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Screen, LectureStatus, User } from '../types';
 import { addLecture, subscribeToSubjects } from '../services/storageService';
-import { Upload, AlertCircle, FileText, X, Paperclip, Image as ImageIcon } from 'lucide-react';
+import { Upload, AlertCircle, FileText, X, Image as ImageIcon } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface UploadScreenProps {
@@ -152,30 +152,34 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
       setIsSubmitting(false);
 
       // --- CELEBRATION! ---
-      // Impressive Confetti
-      const duration = 2000;
-      const end = Date.now() + duration;
+      // Safe Confetti execution
+      try {
+        const duration = 2000;
+        const end = Date.now() + duration;
 
-      (function frame() {
-        confetti({
-          particleCount: 5,
-          angle: 60,
-          spread: 55,
-          origin: { x: 0 },
-          colors: ['#000080', '#800000', '#ffffff'] 
-        });
-        confetti({
-          particleCount: 5,
-          angle: 120,
-          spread: 55,
-          origin: { x: 1 },
-          colors: ['#000080', '#800000', '#ffffff'] 
-        });
+        (function frame() {
+          confetti({
+            particleCount: 5,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+            colors: ['#000080', '#800000', '#ffffff'] 
+          });
+          confetti({
+            particleCount: 5,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+            colors: ['#000080', '#800000', '#ffffff'] 
+          });
 
-        if (Date.now() < end) {
-          requestAnimationFrame(frame);
-        }
-      }());
+          if (Date.now() < end) {
+            requestAnimationFrame(frame);
+          }
+        }());
+      } catch (e) {
+        console.warn("Confetti failed to launch", e);
+      }
 
       // Brief delay to enjoy confetti before navigating
       setTimeout(() => {
@@ -185,7 +189,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
     } catch (err: any) {
       console.error(err);
       if (err.message && err.message.includes("upload")) {
-          setError("Upload timed out. The file might be too heavy for the real-time server. Try uploading an Image instead of a PDF.");
+          setError("Upload timed out. The file might be too heavy. Try uploading an Image.");
       } else {
           setError(err.message || "Failed to upload. Please try again.");
       }
@@ -197,6 +201,9 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
 
   const inputClass = "w-full rounded-xl bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-pressed dark:shadow-neu-pressed-dark border-transparent focus:border-navy-500 focus:ring-0 text-navy-900 dark:text-navy-100 placeholder-navy-300 p-4 text-sm font-medium transition-all duration-200 outline-none";
   const labelClass = "block text-xs font-bold text-navy-700 dark:text-navy-300 uppercase tracking-wider mb-2 ml-1";
+
+  // Guard clause for missing user data
+  if (!currentUser) return <div className="p-10 text-center">Loading User Data...</div>;
 
   return (
     <div className="max-w-2xl mx-auto">
