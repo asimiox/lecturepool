@@ -454,7 +454,8 @@ export const addAnnouncement = async (
           audienceName,
           createdBy: adminName,
           timestamp: Date.now(),
-          date: new Date().toISOString().split('T')[0]
+          date: new Date().toISOString().split('T')[0],
+          readBy: [] // Initialize empty read array
       };
       await setDoc(doc(db, "announcements", newAnnouncement.id), newAnnouncement);
       return { success: true, message: 'Announcement posted' };
@@ -462,6 +463,18 @@ export const addAnnouncement = async (
       console.error(e);
       return { success: false, message: 'Failed to post announcement' };
   }
+};
+
+export const markAnnouncementAsRead = async (announcementId: string, studentId: string): Promise<void> => {
+    if (!db) return;
+    try {
+        const announcementRef = doc(db, "announcements", announcementId);
+        await updateDoc(announcementRef, {
+            readBy: arrayUnion(studentId)
+        });
+    } catch (e) {
+        console.error("Failed to mark announcement as read", e);
+    }
 };
 
 export const updateAnnouncement = async (id: string, message: string): Promise<void> => {
