@@ -1,4 +1,5 @@
-import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS, Attachment } from '../types';
+
+import { Lecture, LectureStatus, User, UserStatus, DEFAULT_SUBJECTS, Attachment, Announcement } from '../types';
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
 import { 
@@ -423,6 +424,54 @@ export const updateUserProfile = async (userId: string, updates: { name?: string
   } catch (e) {
       return { success: false, message: 'Update failed' };
   }
+};
+
+// --- ANNOUNCEMENT SERVICES ---
+
+export const subscribeToAnnouncements = (callback: (announcements: Announcement[]) => void): () => void => {
+  if (!db) return () => {};
+  const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
+  return onSnapshot(q, (snapshot) => {
+    const announcements: Announcement[] = [];
+    snapshot.forEach(doc => announcements.push(doc.data() as Announcement));
+    callback(announcements);
+  });
+};
+
+export const addAnnouncement = async (
+  message: string, 
+  audience: string, 
+  audienceName: string, 
+  adminName: string
+): Promise<{ success: boolean; message: string }> => {
+  if (!db) return { success: false, message: "Database disconnected" };
+  
+  try {
+      const newAnnouncement: Announcement = {
+          id: crypto.randomUUID(),
+          message,
+          audience, // 'all' or student ID
+          audienceName,
+          createdBy: adminName,
+          timestamp: Date.now(),
+          date: new Date().toISOString().split('T')[0]
+      };
+      await setDoc(doc(db, "announcements", newAnnouncement.id), newAnnouncement);
+      return { success: true, message: 'Announcement posted' };
+  } catch (e) {
+      console.error(e);
+      return { success: false, message: 'Failed to post announcement' };
+  }
+};
+
+export const updateAnnouncement = async (id: string, message: string): Promise<void> => {
+    if(!db) return;
+    await updateDoc(doc(db, "announcements", id), { message });
+};
+
+export const deleteAnnouncement = async (id: string): Promise<void> => {
+    if(!db) return;
+    await deleteDoc(doc(db, "announcements", id));
 };
 
 // --- LECTURE SERVICES (GLOBAL SYNC) ---
