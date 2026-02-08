@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Screen, LectureStatus, User } from '../types';
 import { addLecture, subscribeToSubjects } from '../services/storageService';
-import { Upload, AlertCircle, FileText, Image as ImageIcon, X, Paperclip } from 'lucide-react';
+import { Upload, AlertCircle, FileText, X, Paperclip } from 'lucide-react';
 
 interface UploadScreenProps {
   onNavigate: (screen: Screen) => void;

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Screen, User, Lecture } from '../types';
 import { subscribeToLectures } from '../services/storageService';
-import { UploadCloud, Clock, Calendar } from 'lucide-react';
+import { UploadCloud, Clock, Calendar, Megaphone } from 'lucide-react';
 import { LectureCard } from '../components/LectureCard';
 
 interface HomeScreenProps {
@@ -60,7 +60,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <button
           onClick={() => onNavigate(Screen.UPLOAD)}
           className="group relative p-6 rounded-3xl text-left flex items-center gap-6 bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:shadow-neu-pressed dark:hover:shadow-neu-pressed-dark transition-all"
@@ -69,7 +69,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
             <UploadCloud className="h-6 w-6" />
           </div>
           <div>
-             <h3 className="text-xl font-bold text-navy-900 dark:text-navy-50">Upload Notes</h3>
+             <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50">Upload Notes</h3>
              <p className="text-navy-500 dark:text-navy-400 text-xs font-medium">Share today's lecture</p>
           </div>
         </button>
@@ -82,8 +82,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
             <Clock className="h-6 w-6" />
           </div>
           <div>
-             <h3 className="text-xl font-bold text-navy-900 dark:text-navy-50">Check Status</h3>
-             <p className="text-navy-500 dark:text-navy-400 text-xs font-medium">Track your submissions</p>
+             <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50">Check Status</h3>
+             <p className="text-navy-500 dark:text-navy-400 text-xs font-medium">Track submissions</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => onNavigate(Screen.ANNOUNCEMENTS)}
+          className="group relative p-6 rounded-3xl text-left flex items-center gap-6 bg-[#e6e9ef] dark:bg-[#1e212b] shadow-neu-flat dark:shadow-neu-flat-dark hover:shadow-neu-pressed dark:hover:shadow-neu-pressed-dark transition-all"
+        >
+          <div className="p-4 rounded-2xl bg-yellow-600 text-white shadow-neu-flat dark:shadow-none">
+            <Megaphone className="h-6 w-6" />
+          </div>
+          <div>
+             <h3 className="text-lg font-bold text-navy-900 dark:text-navy-50">Announcements</h3>
+             <p className="text-navy-500 dark:text-navy-400 text-xs font-medium">Faculty Notices</p>
           </div>
         </button>
       </div>
