@@ -36,6 +36,16 @@ export interface Lecture {
   adminRemark?: string;
 }
 
+export interface Announcement {
+  id: string;
+  message: string;
+  audience: 'all' | string; // 'all' or specific studentId
+  audienceName?: string; // For display purposes on admin side
+  createdBy: string;
+  timestamp: number;
+  date: string;
+}
+
 export enum Screen {
   AUTH = 'AUTH',
   HOME = 'HOME', // Dashboards
@@ -43,6 +53,7 @@ export enum Screen {
   LIBRARY = 'LIBRARY', // All approved lectures
   MY_UPLOADS = 'MY_UPLOADS', // Student specific
   PROFILE = 'PROFILE', // Edit Profile
+  ANNOUNCEMENTS = 'ANNOUNCEMENTS', // New Screen
 }
 
 export const DEFAULT_SUBJECTS = [

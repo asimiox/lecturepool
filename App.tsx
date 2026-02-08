@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Screen, User } from './types';
 import { Layout } from './components/Layout';
@@ -8,12 +9,29 @@ import { ApprovedLecturesScreen } from './screens/ApprovedLecturesScreen';
 import { AdminDashboardScreen } from './screens/AdminDashboardScreen';
 import { AuthScreen } from './screens/AuthScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { AnnouncementsScreen } from './screens/AnnouncementsScreen';
 import { subscribeToUserProfile } from './services/storageService';
+import { NotificationToast, NotificationType } from './components/NotificationToast';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.AUTH);
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Global Notification State
+  const [notify, setNotify] = useState<{ msg: string; type: NotificationType; show: boolean }>({
+    msg: '',
+    type: 'info',
+    show: false
+  });
+
+  const showNotification = (msg: string, type: NotificationType = 'success') => {
+    setNotify({ msg, type, show: true });
+  };
+
+  const hideNotification = () => {
+    setNotify(prev => ({ ...prev, show: false }));
+  };
 
   useEffect(() => {
     // Theme initialization
@@ -30,25 +48,17 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Listen to the specific user document in the database
-    // This ensures if Admin clicks "Reject" on their dashboard, 
-    // this user is immediately logged out on their device.
     const unsubscribe = subscribeToUserProfile(currentUser.id, (updatedUser) => {
       if (!updatedUser) {
-        // User deleted from database
         alert("Your account has been removed.");
         handleLogout();
       } else if (updatedUser.status === 'rejected') {
-        // User banned/rejected by admin
         alert("Session Expired: Your account access has been revoked by the administrator.");
         handleLogout();
       } else if (updatedUser.status === 'pending' && currentUser.status === 'active') {
-         // Rare edge case: Moved back to pending
          alert("Your account is under review.");
          handleLogout();
       } else {
-         // Sync other details (name change, etc) quietly
-         // Only update if something actually changed to avoid render loops
          if (JSON.stringify(updatedUser) !== JSON.stringify(currentUser)) {
              setCurrentUser(updatedUser);
          }
@@ -56,22 +66,25 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.id]); // Only re-subscribe if ID changes (login)
+  }, [currentUser?.id]);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setCurrentScreen(Screen.HOME);
+    showNotification(`Welcome back, ${user.name}!`, 'success');
   };
 
   const handleUserUpdate = (updatedUser: User) => {
     setCurrentUser(updatedUser);
+    showNotification("Profile updated successfully", 'success');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setCurrentScreen(Screen.AUTH);
+    showNotification("Logged out successfully", 'info');
   };
 
   const renderScreen = () => {
@@ -79,38 +92,48 @@ const App: React.FC = () => {
       return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
     }
 
+    // Cloning elements to inject showNotification prop if they accept it
+    // Using explicit props for type safety
     switch (currentScreen) {
       case Screen.AUTH:
-         // Should not happen if user is set, but redirect just in case
          return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
       case Screen.HOME:
-        // Admin goes to AdminDashboard, Student goes to StudentHome
-        if (currentUser.role === 'admin') return <AdminDashboardScreen />;
+        if (currentUser.role === 'admin') return <AdminDashboardScreen showNotification={showNotification} />;
         return <HomeScreen onNavigate={setCurrentScreen} currentUser={currentUser} />;
       case Screen.UPLOAD:
-        return <UploadScreen onNavigate={setCurrentScreen} currentUser={currentUser} />;
+        return <UploadScreen onNavigate={setCurrentScreen} currentUser={currentUser} />; // UploadScreen could be updated to use showNotification if needed
       case Screen.MY_UPLOADS:
         return <StudentDashboardScreen onNavigate={setCurrentScreen} currentUser={currentUser} />;
       case Screen.LIBRARY:
         return <ApprovedLecturesScreen />;
       case Screen.PROFILE:
         return <ProfileScreen currentUser={currentUser} onUserUpdate={handleUserUpdate} onNavigate={setCurrentScreen} />;
+      case Screen.ANNOUNCEMENTS:
+        return <AnnouncementsScreen currentUser={currentUser} />;
       default:
         return <HomeScreen onNavigate={setCurrentScreen} currentUser={currentUser} />;
     }
   };
 
   return (
-    <Layout 
-      currentScreen={currentScreen} 
-      onNavigate={setCurrentScreen}
-      currentUser={currentUser}
-      onLogout={handleLogout}
-      isDarkMode={isDarkMode}
-      toggleTheme={toggleTheme}
-    >
-      {renderScreen()}
-    </Layout>
+    <>
+      <NotificationToast 
+        message={notify.msg} 
+        type={notify.type} 
+        isVisible={notify.show} 
+        onClose={hideNotification} 
+      />
+      <Layout 
+        currentScreen={currentScreen} 
+        onNavigate={setCurrentScreen}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+      >
+        {renderScreen()}
+      </Layout>
+    </>
   );
 };
 
