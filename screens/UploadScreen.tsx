@@ -2,7 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Screen, LectureStatus, User } from '../types';
 import { addLecture, subscribeToSubjects } from '../services/storageService';
-import { Upload, AlertCircle, FileText, X, Paperclip } from 'lucide-react';
+import { Upload, AlertCircle, FileText, X, Paperclip, Image as ImageIcon } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 interface UploadScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -76,7 +77,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
     const newSize = files.reduce((acc, f) => acc + f.size, 0);
 
     if (currentSize + newSize > MAX_TOTAL_SIZE_BYTES) {
-        setError(`Total file size exceeds ${MAX_TOTAL_SIZE_MB}MB limit. Please remove some files.`);
+        setError(`Total file size exceeds ${MAX_TOTAL_SIZE_MB}MB. Please use images (they compress better) or smaller PDFs.`);
         return;
     }
 
@@ -113,7 +114,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
     e.preventDefault();
     
     if (selectedFiles.length === 0) {
-      setError("Please upload at least one file (Image, PDF, or Document).");
+      setError("Please upload at least one file.");
       return;
     }
     if (!formData.topic) {
@@ -149,10 +150,45 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
       });
 
       setIsSubmitting(false);
-      onNavigate(Screen.MY_UPLOADS);
+
+      // --- CELEBRATION! ---
+      // Impressive Confetti
+      const duration = 2000;
+      const end = Date.now() + duration;
+
+      (function frame() {
+        confetti({
+          particleCount: 5,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0 },
+          colors: ['#000080', '#800000', '#ffffff'] 
+        });
+        confetti({
+          particleCount: 5,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1 },
+          colors: ['#000080', '#800000', '#ffffff'] 
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      }());
+
+      // Brief delay to enjoy confetti before navigating
+      setTimeout(() => {
+          onNavigate(Screen.MY_UPLOADS);
+      }, 1500);
+
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to upload. Please try again.");
+      if (err.message && err.message.includes("upload")) {
+          setError("Upload timed out. The file might be too heavy for the real-time server. Try uploading an Image instead of a PDF.");
+      } else {
+          setError(err.message || "Failed to upload. Please try again.");
+      }
       setIsSubmitting(false);
     }
   };
@@ -227,7 +263,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
         {/* File Upload Section */}
         <div>
           <label className={labelClass}>
-              Upload Documents (PDF, Word, PPT) or Images (Max {MAX_TOTAL_SIZE_MB}MB)
+             Upload Materials
           </label>
           <div 
             className={`mt-2 flex flex-col items-center justify-center px-6 py-8 rounded-2xl cursor-pointer transition-all duration-300 border-2 border-dashed ${
@@ -235,13 +271,15 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onNavigate, currentU
             }`}
             onClick={() => !isSubmitting && fileInputRef.current?.click()}
           >
-             <div className="p-3 rounded-full bg-navy-100 dark:bg-navy-800 mb-3">
-                 <Paperclip className="h-6 w-6 text-navy-600 dark:text-navy-300" />
+             <div className="p-3 rounded-full bg-navy-100 dark:bg-navy-800 mb-3 text-navy-600 dark:text-navy-300">
+                 <ImageIcon className="h-6 w-6" />
              </div>
              <span className="text-sm font-bold text-navy-700 dark:text-navy-200">
-                Click to add files
+                Tap to attach files
              </span>
-             <p className="text-xs text-navy-400 mt-1">Supports PDF, DOC, DOCX, PPT, PPTX, JPG, PNG</p>
+             <p className="text-[10px] font-bold text-maroon-500 mt-2 bg-maroon-50 dark:bg-maroon-900/30 px-2 py-1 rounded-md">
+                 ⚡ Tip: Images process faster than PDFs
+             </p>
              <input 
                 id="file-upload" 
                 name="file-upload" 

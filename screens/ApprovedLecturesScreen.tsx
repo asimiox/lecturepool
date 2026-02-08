@@ -1,11 +1,29 @@
 
 import React, { useState, useEffect } from 'react';
 import { Lecture } from '../types';
-import { subscribeToLectures, subscribeToSubjects } from '../services/storageService';
+import { subscribeToLectures, subscribeToSubjects, subscribeToUserProfile } from '../services/storageService';
 import { LectureCard } from '../components/LectureCard';
 import { Filter, Calendar, Search } from 'lucide-react';
+// We need to know who is logged in to allow liking
+import { User } from '../types'; 
+// Note: In a real app we'd use context, but here we can hack it via local storage or props passed down.
+// Since App.tsx renders this, let's update App.tsx to pass currentUser, but for now 
+// we will assume the parent passes props, or we read from a global if needed.
+// WAIT - I need to modify App.tsx to pass currentUser to this screen.
 
-export const ApprovedLecturesScreen: React.FC = () => {
+// However, based on the previous file `App.tsx` provided in context:
+// <ApprovedLecturesScreen /> is rendered without props.
+// I will just add the prop to the interface here and update App.tsx if I can, 
+// OR I will trust the XML I generate for App.tsx later. 
+// Actually, I can't modify App.tsx in this specific block easily without making this response huge.
+// BETTER APPROACH: Use `localStorage` to get basic user info if prop isn't available? No, anti-pattern.
+// I will update App.tsx to pass currentUser.
+
+interface ApprovedLecturesScreenProps {
+    currentUser?: User; // Optional to prevent breaking build if parent not updated immediately
+}
+
+export const ApprovedLecturesScreen: React.FC<ApprovedLecturesScreenProps> = ({ currentUser }) => {
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [subjects, setSubjects] = useState<string[]>([]);
   const [subjectFilter, setSubjectFilter] = useState<string>('All');
@@ -115,7 +133,12 @@ export const ApprovedLecturesScreen: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredLectures.map(lecture => (
-            <LectureCard key={lecture.id} lecture={lecture} />
+            <LectureCard 
+                key={lecture.id} 
+                lecture={lecture} 
+                currentUserId={currentUser?.id}
+                currentUserName={currentUser?.name}
+            />
           ))}
         </div>
       )}

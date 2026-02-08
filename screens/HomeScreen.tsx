@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Screen, User, Lecture } from '../types';
 import { subscribeToLectures } from '../services/storageService';
-import { UploadCloud, Clock, Calendar, Megaphone } from 'lucide-react';
+import { UploadCloud, Clock, Calendar, Megaphone, Crown } from 'lucide-react';
 import { LectureCard } from '../components/LectureCard';
 
 interface HomeScreenProps {
@@ -42,12 +42,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
      )
   }
 
+  // Secret Greeting for "56"
+  const isQueen = currentUser.rollNo === '56';
+
   return (
     <div className="space-y-12 pb-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-           <h2 className="text-4xl font-black text-navy-900 dark:text-navy-50">
-             {greeting}, <span className="text-maroon-600">{currentUser.name.split(' ')[0]}</span>
+           <h2 className="text-4xl font-black text-navy-900 dark:text-navy-50 flex items-center gap-3">
+             {greeting}, 
+             <span className="text-maroon-600 relative">
+                 {currentUser.name.split(' ')[0]}
+                 {isQueen && <Crown size={24} className="absolute -top-6 -right-4 text-yellow-500 transform rotate-12" fill="currentColor" />}
+             </span>
            </h2>
            <p className="text-navy-500 dark:text-navy-300 font-medium mt-2">
              Here is what's happening in class today.
@@ -121,7 +128,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, currentUser 
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {todaysLectures.map(lecture => (
-                    <LectureCard key={lecture.id} lecture={lecture} />
+                    <LectureCard 
+                        key={lecture.id} 
+                        lecture={lecture} 
+                        currentUserId={currentUser.id}
+                        currentUserName={currentUser.name}
+                    />
                 ))}
             </div>
         )}
