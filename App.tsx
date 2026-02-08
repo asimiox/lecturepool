@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Screen, User } from './types';
 import { Layout } from './components/Layout';
 import { HomeScreen } from './screens/HomeScreen';
@@ -10,7 +10,7 @@ import { AdminDashboardScreen } from './screens/AdminDashboardScreen';
 import { AuthScreen } from './screens/AuthScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { AnnouncementsScreen } from './screens/AnnouncementsScreen';
-import { subscribeToUserProfile } from './services/storageService';
+import { subscribeToUserProfile, subscribeToAnnouncements } from './services/storageService';
 import { NotificationToast, NotificationType } from './components/NotificationToast';
 
 const App: React.FC = () => {
@@ -24,6 +24,10 @@ const App: React.FC = () => {
     type: 'info',
     show: false
   });
+
+  // Track known announcements to detect new ones
+  const knownAnnouncementIds = useRef<Set<string>>(new Set());
+  const isFirstLoadRef = useRef(true);
 
   const showNotification = (msg: string, type: NotificationType = 'success') => {
     setNotify({ msg, type, show: true });
@@ -68,11 +72,40 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser?.id]);
 
+  // New Announcement Notification Logic
+  useEffect(() => {
+    if (!currentUser || currentUser.role === 'admin') return;
+
+    const unsub = subscribeToAnnouncements((list) => {
+       if (isFirstLoadRef.current) {
+          // First load: just populate the set, don't notify
+          list.forEach(a => knownAnnouncementIds.current.add(a.id));
+          isFirstLoadRef.current = false;
+          return;
+       }
+
+       // Check for any NEW items
+       list.forEach(ann => {
+          if (!knownAnnouncementIds.current.has(ann.id)) {
+              // It's new! Check if it is for this user
+              if (ann.audience === 'all' || ann.audience === currentUser.id) {
+                  showNotification("📢 New Announcement: " + ann.message.substring(0, 30) + "...", 'info');
+              }
+              knownAnnouncementIds.current.add(ann.id);
+          }
+       });
+    });
+
+    return () => unsub();
+  }, [currentUser]);
+
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setCurrentScreen(Screen.HOME);
+    isFirstLoadRef.current = true; // Reset for new session
+    knownAnnouncementIds.current.clear();
     showNotification(`Welcome back, ${user.name}!`, 'success');
   };
 

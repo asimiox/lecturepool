@@ -44,6 +44,7 @@ export interface Announcement {
   createdBy: string;
   timestamp: number;
   date: string;
+  readBy: string[]; // Array of student IDs who have read the announcement
 }
 
 export enum Screen {
